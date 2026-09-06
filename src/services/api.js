@@ -12,7 +12,7 @@ if (STORAGE_MODE === 'supabase' && SUPABASE_URL && SUPABASE_ANON_KEY) {
   supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-// Fallback Mock Local Data (chạy khi không kết nối được backend)
+// Fallback Mock Local Data
 const DEFAULT_SETTINGS = {
   admin_pin: '888888',
   group_password: '123456',
@@ -57,33 +57,28 @@ export const dataService = {
           message: data.message || '',
         };
       } catch (e) {
-        console.warn('API không phản hồi, kiểm tra access local fallback', e);
-        const storedAdminPin = localStorage.getItem('local_admin_pin') || '888888';
-        const storedGroupPwd = localStorage.getItem('local_group_password') || '123456';
-        if (password === storedAdminPin) {
-          return { verified: true, isAdmin: true };
-        }
-        if (password === storedGroupPwd) {
-          return { verified: true, isAdmin: false };
-        }
-        return { verified: false, isAdmin: false, message: 'Mật khẩu không đúng' };
+        console.warn('API không phản hồi, fallback verifyAccess', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
-      const { data } = await supabase.from('settings').select('key, value');
-      const map = {};
-      data?.forEach((r) => { map[r.key] = r.value; });
-      const adminPin = map.admin_pin || '888888';
-      const groupPwd = map.group_password || '123456';
-      if (password === adminPin) return { verified: true, isAdmin: true };
-      if (password === groupPwd) return { verified: true, isAdmin: false };
-      return { verified: false, isAdmin: false, message: 'Mật khẩu không đúng' };
-    } else {
-      const storedAdminPin = localStorage.getItem('local_admin_pin') || '888888';
-      const storedGroupPwd = localStorage.getItem('local_group_password') || '123456';
-      if (password === storedAdminPin) return { verified: true, isAdmin: true };
-      if (password === storedGroupPwd) return { verified: true, isAdmin: false };
-      return { verified: false, isAdmin: false, message: 'Mật khẩu không đúng' };
+      try {
+        const { data } = await supabase.from('settings').select('key, value');
+        const map = {};
+        data?.forEach((r) => { map[r.key] = r.value; });
+        const adminPin = map.admin_pin || '888888';
+        const groupPwd = map.group_password || '123456';
+        if (password === adminPin) return { verified: true, isAdmin: true };
+        if (password === groupPwd) return { verified: true, isAdmin: false };
+        return { verified: false, isAdmin: false, message: 'Mật khẩu truy cập không đúng. Vui lòng hỏi Thủ Quỹ!' };
+      } catch (e) {
+        console.warn('Lỗi kiểm tra Supabase verifyAccess', e);
+      }
     }
+
+    const storedAdminPin = localStorage.getItem('local_admin_pin') || '888888';
+    const storedGroupPwd = localStorage.getItem('local_group_password') || '123456';
+    if (password === storedAdminPin) return { verified: true, isAdmin: true };
+    if (password === storedGroupPwd) return { verified: true, isAdmin: false };
+    return { verified: false, isAdmin: false, message: 'Mật khẩu không đúng' };
   },
 
   verifyPin: async (pin) => {
@@ -97,17 +92,19 @@ export const dataService = {
         const data = await res.json();
         return data.verified === true;
       } catch (e) {
-        console.warn('API không phản hồi, kiểm tra mã PIN local fallback', e);
-        const stored = localStorage.getItem('local_admin_pin') || '888888';
-        return pin === stored;
+        console.warn('API không phản hồi, fallback verifyPin', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
-      const { data } = await supabase.from('settings').select('value').eq('key', 'admin_pin').single();
-      return (data?.value || '888888') === pin;
-    } else {
-      const stored = localStorage.getItem('local_admin_pin') || '888888';
-      return pin === stored;
+      try {
+        const { data } = await supabase.from('settings').select('value').eq('key', 'admin_pin').single();
+        return (data?.value || '888888') === pin;
+      } catch (e) {
+        console.warn('Lỗi kiểm tra Supabase verifyPin', e);
+      }
     }
+
+    const stored = localStorage.getItem('local_admin_pin') || '888888';
+    return pin === stored;
   },
 
   // ===================== SETTINGS =====================
@@ -120,18 +117,23 @@ export const dataService = {
           return { ...DEFAULT_SETTINGS, ...json.data };
         }
       } catch (e) {
-        console.warn('Fallback settings to localStorage', e);
+        console.warn('Fallback getSettings', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
-      const { data } = await supabase.from('settings').select('*');
-      if (data) {
-        const map = {};
-        data.forEach((r) => {
-          if (r.key !== 'admin_pin') map[r.key] = r.value;
-        });
-        return { ...DEFAULT_SETTINGS, ...map };
+      try {
+        const { data } = await supabase.from('settings').select('*');
+        if (data && data.length > 0) {
+          const map = {};
+          data.forEach((r) => {
+            if (r.key !== 'admin_pin') map[r.key] = r.value;
+          });
+          return { ...DEFAULT_SETTINGS, ...map };
+        }
+      } catch (e) {
+        console.warn('Lỗi Supabase getSettings', e);
       }
     }
+
     const local = localStorage.getItem('app_settings');
     return local ? JSON.parse(local) : DEFAULT_SETTINGS;
   },
@@ -145,15 +147,23 @@ export const dataService = {
           body: JSON.stringify(settings),
         });
       } catch (e) {
-        console.warn('Lưu settings local fallback', e);
+        console.warn('Lỗi lưu settings local_api', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
-      for (const [key, value] of Object.entries(settings)) {
-        await supabase.from('settings').upsert({ key, value });
+      try {
+        for (const [key, value] of Object.entries(settings)) {
+          await supabase.from('settings').upsert({ key, value });
+        }
+      } catch (e) {
+        console.warn('Lỗi lưu settings Supabase', e);
       }
     }
+
     if (settings.admin_pin) {
       localStorage.setItem('local_admin_pin', settings.admin_pin);
+    }
+    if (settings.group_password) {
+      localStorage.setItem('local_group_password', settings.group_password);
     }
     localStorage.setItem('app_settings', JSON.stringify(settings));
     return true;
@@ -169,21 +179,20 @@ export const dataService = {
           return json.data;
         }
       } catch (e) {
-        console.warn('Fallback dashboard to local calculations', e);
+        console.warn('Fallback dashboard summary', e);
       }
     }
 
-    // Local Calculation Fallback
-    const txs = await dataService.getTransactions();
+    const txs = await dataService.getTransactions({});
     let totalIncome = 0;
     let totalExpense = 0;
     let monthIncome = 0;
     let monthExpense = 0;
 
     txs.forEach((t) => {
-      const amt = Number(t.amount);
+      const amt = Number(t.amount) || 0;
       const d = new Date(t.transaction_date);
-      const isThisMonth = d.getMonth() + 1 === month && d.getFullYear() === year;
+      const isThisMonth = d.getMonth() + 1 === Number(month) && d.getFullYear() === Number(year);
 
       if (t.type === 'income') {
         totalIncome += amt;
@@ -194,7 +203,6 @@ export const dataService = {
       }
     });
 
-    // 6 months chart
     const chartData = [];
     for (let i = 5; i >= 0; i--) {
       const targetDate = new Date(year, month - 1 - i, 1);
@@ -230,7 +238,7 @@ export const dataService = {
     };
   },
 
-  // ===================== MEMBERS & CONTRIBUTIONS =====================
+  // ===================== MEMBERS =====================
   getMembers: async () => {
     if (STORAGE_MODE === 'local_api') {
       try {
@@ -240,41 +248,20 @@ export const dataService = {
       } catch (e) {
         console.warn('Fallback getMembers', e);
       }
-    }
-    const local = localStorage.getItem('app_members');
-    return local ? JSON.parse(local) : DEFAULT_MEMBERS;
-  },
-
-  getContributions: async (month, year) => {
-    if (STORAGE_MODE === 'local_api') {
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
-        const res = await fetch(`${API_BASE_URL}/contributions?month=${month}&year=${year}`);
-        const json = await res.json();
-        if (json.status === 'success' && json.data) return json.data;
+        const { data, error } = await supabase
+          .from('members')
+          .select('*')
+          .order('id', { ascending: true });
+        if (data && data.length > 0) return data;
       } catch (e) {
-        console.warn('Fallback getContributions', e);
+        console.warn('Lỗi Supabase getMembers', e);
       }
     }
 
-    // Local Storage Fallback
-    const members = await dataService.getMembers();
-    const storageKey = `contributions_${year}_${month}`;
-    const local = localStorage.getItem(storageKey);
-    if (local) return JSON.parse(local);
-
-    const initial = members.map((m, idx) => ({
-      id: idx + 1,
-      member_id: m.id,
-      member_name: m.name,
-      member_phone: m.phone,
-      month,
-      year,
-      amount: 100000,
-      is_paid: idx % 2 === 0 ? 1 : 0,
-      paid_at: idx % 2 === 0 ? new Date().toISOString() : null,
-    }));
-    localStorage.setItem(storageKey, JSON.stringify(initial));
-    return initial;
+    const local = localStorage.getItem('app_members');
+    return local ? JSON.parse(local) : DEFAULT_MEMBERS;
   },
 
   updateMember: async (id, memberData) => {
@@ -287,57 +274,205 @@ export const dataService = {
         });
         return true;
       } catch (e) {
-        console.warn('Fallback updateMember', e);
+        console.warn('Fallback updateMember local_api', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        await supabase.from('members').update(memberData).eq('id', id);
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase updateMember', e);
       }
     }
+
     const members = await dataService.getMembers();
     const updated = members.map((m) => (m.id === id ? { ...m, ...memberData } : m));
     localStorage.setItem('app_members', JSON.stringify(updated));
     return true;
   },
 
-  submitPayment: async ({ member_id, month, year, amount, note }) => {
+  createMember: async (memberData) => {
     if (STORAGE_MODE === 'local_api') {
       try {
-        const res = await fetch(`${API_BASE_URL}/contributions/submit-payment`, {
+        const res = await fetch(`${API_BASE_URL}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ member_id, month, year, amount, note }),
+          body: JSON.stringify(memberData),
         });
         const json = await res.json();
-        return json.status === 'success';
+        return json.id;
       } catch (e) {
-        console.warn('Fallback submitPayment', e);
+        console.warn('Fallback createMember', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        const { data } = await supabase.from('members').insert(memberData).select().single();
+        return data?.id;
+      } catch (e) {
+        console.warn('Lỗi Supabase createMember', e);
       }
     }
 
-    // Local fallback
     const members = await dataService.getMembers();
-    const mem = members.find((m) => m.id === member_id);
-    const memberName = mem ? mem.name : 'Thành viên';
-    const fullNote = note ? note : `Thành viên ${memberName} nộp quỹ T${month}/${year}`;
+    const newMember = { ...memberData, id: Date.now() };
+    members.push(newMember);
+    localStorage.setItem('app_members', JSON.stringify(members));
+    return newMember.id;
+  },
 
-    // 1. Update contribution
+  deleteMember: async (id) => {
+    if (STORAGE_MODE === 'local_api') {
+      try {
+        await fetch(`${API_BASE_URL}/members?id=${id}`, { method: 'DELETE' });
+        return true;
+      } catch (e) {
+        console.warn('Fallback deleteMember', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        await supabase.from('members').delete().eq('id', id);
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase deleteMember', e);
+      }
+    }
+
+    const members = await dataService.getMembers();
+    const updated = members.filter((m) => m.id !== id);
+    localStorage.setItem('app_members', JSON.stringify(updated));
+    return true;
+  },
+
+  // ===================== CONTRIBUTIONS =====================
+  getContributions: async (month, year) => {
+    const settings = await dataService.getSettings();
+    const weeklyAmount = Number(settings.weekly_amount) || 10000;
+    const members = await dataService.getMembers();
+
+    if (STORAGE_MODE === 'local_api') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/contributions?month=${month}&year=${year}`);
+        const json = await res.json();
+        if (json.status === 'success' && json.data) return json.data;
+      } catch (e) {
+        console.warn('Fallback getContributions local_api', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        // 1. Đảm bảo 4 tuần tồn tại trong DB Supabase
+        const { data: existingWeeks } = await supabase
+          .from('fund_contributions')
+          .select('*')
+          .eq('month', month)
+          .eq('year', year);
+
+        const existingMap = new Set((existingWeeks || []).map((w) => `${w.member_id}_${w.week}`));
+        const toInsert = [];
+
+        for (const m of members) {
+          for (let w = 1; w <= 4; w++) {
+            if (!existingMap.has(`${m.id}_${w}`)) {
+              toInsert.push({
+                member_id: m.id,
+                year,
+                month,
+                week: w,
+                amount: weeklyAmount,
+                is_paid: 0,
+              });
+            }
+          }
+        }
+
+        if (toInsert.length > 0) {
+          await supabase.from('fund_contributions').insert(toInsert);
+        }
+
+        // 2. Lấy lại danh sách 4 tuần đã nạp
+        const { data: allWeeks } = await supabase
+          .from('fund_contributions')
+          .select('*')
+          .eq('month', month)
+          .eq('year', year)
+          .order('member_id', { ascending: true })
+          .order('week', { ascending: true });
+
+        const grouped = {};
+        allWeeks?.forEach((w) => {
+          if (!grouped[w.member_id]) grouped[w.member_id] = [];
+          grouped[w.member_id].push(w);
+        });
+
+        return members.map((m) => {
+          const weeks = grouped[m.id] || [];
+          let paidCount = 0;
+          let totalPaid = 0;
+          const notes = [];
+
+          weeks.forEach((w) => {
+            if (w.is_paid === 1 || w.is_paid === true) {
+              paidCount++;
+              totalPaid += Number(w.amount);
+            }
+            if (w.note) notes.push(w.note);
+          });
+
+          return {
+            member_id: m.id,
+            member_name: m.name,
+            member_phone: m.phone || '',
+            member_bank_id: m.bank_id || 'MBBank',
+            member_bank_account_no: m.bank_account_no || '',
+            member_bank_account_name: m.bank_account_name || '',
+            month,
+            year,
+            weeks,
+            paid_weeks_count: paidCount,
+            total_paid: totalPaid,
+            is_month_fully_paid: paidCount >= 4,
+            note: notes.length > 0 ? Array.from(new Set(notes)).join(', ') : '',
+          };
+        });
+      } catch (e) {
+        console.warn('Lỗi Supabase getContributions', e);
+      }
+    }
+
+    // Local Storage fallback
     const storageKey = `contributions_${year}_${month}`;
-    const list = await dataService.getContributions(month, year);
-    const updated = list.map((item) =>
-      item.member_id === member_id
-        ? { ...item, is_paid: 1, paid_at: new Date().toISOString(), note: fullNote }
-        : item
-    );
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    const local = localStorage.getItem(storageKey);
+    if (local) return JSON.parse(local);
 
-    // 2. Add transaction
-    await dataService.createTransaction({
-      type: 'income',
-      amount: Number(amount),
-      category: 'Thu quỹ định kỳ',
-      member_name: memberName,
-      description: fullNote,
-      transaction_date: new Date().toISOString().slice(0, 10),
+    const initial = members.map((m) => {
+      const weeks = [1, 2, 3, 4].map((w) => ({
+        id: `${m.id}_${w}`,
+        member_id: m.id,
+        week: w,
+        amount: weeklyAmount,
+        is_paid: 0,
+        paid_at: null,
+        note: null,
+      }));
+
+      return {
+        member_id: m.id,
+        member_name: m.name,
+        member_phone: m.phone || '',
+        member_bank_id: m.bank_id || 'MBBank',
+        member_bank_account_no: m.bank_account_no || '',
+        member_bank_account_name: m.bank_account_name || '',
+        month,
+        year,
+        weeks,
+        paid_weeks_count: 0,
+        total_paid: 0,
+        is_month_fully_paid: false,
+        note: '',
+      };
     });
 
-    return true;
+    localStorage.setItem(storageKey, JSON.stringify(initial));
+    return initial;
   },
 
   toggleWeekContribution: async (id, isPaid, note = null) => {
@@ -352,28 +487,143 @@ export const dataService = {
       } catch (e) {
         console.warn('Fallback toggleWeekContribution', e);
       }
-    }
-    return true;
-  },
-
-  toggleMonthContribution: async (memberId, month, year, isPaid, note = null) => {
-    if (STORAGE_MODE === 'local_api') {
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
-        await fetch(`${API_BASE_URL}/contributions/toggle-month`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ member_id: memberId, month, year, is_paid: isPaid ? 1 : 0, note }),
-        });
+        await supabase
+          .from('fund_contributions')
+          .update({
+            is_paid: isPaid ? 1 : 0,
+            paid_at: isPaid ? new Date().toISOString() : null,
+            ...(note ? { note } : {}),
+          })
+          .eq('id', id);
         return true;
       } catch (e) {
-        console.warn('Fallback toggleMonthContribution', e);
+        console.warn('Lỗi Supabase toggleWeekContribution', e);
       }
     }
     return true;
   },
 
-  toggleContribution: async (id, isPaid, month, year, note = null) => {
-    return dataService.toggleWeekContribution(id, isPaid, note);
+  toggleMonthContribution: async (memberId, month, year, isPaid, note = null) => {
+    const fullNote = isPaid ? (note || `Đóng cả tháng ${month}/${year}`) : null;
+
+    if (STORAGE_MODE === 'local_api') {
+      try {
+        await fetch(`${API_BASE_URL}/contributions/toggle-month`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ member_id: memberId, month, year, is_paid: isPaid ? 1 : 0, note: fullNote }),
+        });
+        return true;
+      } catch (e) {
+        console.warn('Fallback toggleMonthContribution', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        await supabase
+          .from('fund_contributions')
+          .update({
+            is_paid: isPaid ? 1 : 0,
+            paid_at: isPaid ? new Date().toISOString() : null,
+            note: fullNote,
+          })
+          .eq('member_id', memberId)
+          .eq('month', month)
+          .eq('year', year);
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase toggleMonthContribution', e);
+      }
+    }
+    return true;
+  },
+
+  submitPayment: async ({ member_id, month, year, amount, note }) => {
+    const settings = await dataService.getSettings();
+    const weeklyAmount = Number(settings.weekly_amount) || 10000;
+    const monthlyAmount = Number(settings.monthly_amount) || weeklyAmount * 4;
+
+    const weeksToPay = amount >= monthlyAmount ? 4 : Math.max(1, Math.min(4, Math.floor(amount / weeklyAmount)));
+    const fullNote = note?.trim() || `Nộp ${weeksToPay} tuần T${month}/${year}`;
+
+    if (STORAGE_MODE === 'local_api') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/contributions/submit-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ member_id, month, year, amount, note: fullNote }),
+        });
+        const json = await res.json();
+        return json.status === 'success';
+      } catch (e) {
+        console.warn('Fallback submitPayment', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        // 1. Tích các tuần tương ứng
+        if (weeksToPay >= 4) {
+          await supabase
+            .from('fund_contributions')
+            .update({ is_paid: 1, paid_at: new Date().toISOString(), note: fullNote })
+            .eq('member_id', member_id)
+            .eq('month', month)
+            .eq('year', year);
+        } else {
+          const { data: unpaidWeeks } = await supabase
+            .from('fund_contributions')
+            .select('id')
+            .eq('member_id', member_id)
+            .eq('month', month)
+            .eq('year', year)
+            .eq('is_paid', 0)
+            .order('week', { ascending: true })
+            .limit(weeksToPay);
+
+          if (unpaidWeeks && unpaidWeeks.length > 0) {
+            const ids = unpaidWeeks.map((w) => w.id);
+            await supabase
+              .from('fund_contributions')
+              .update({ is_paid: 1, paid_at: new Date().toISOString(), note: fullNote })
+              .in('id', ids);
+          }
+        }
+
+        // 2. Lấy tên thành viên & tạo transaction thu
+        const { data: member } = await supabase.from('members').select('name').eq('id', member_id).single();
+        const memberName = member?.name || 'Thành viên';
+
+        await supabase.from('transactions').insert({
+          type: 'income',
+          amount: Number(amount),
+          category: 'Thu quỹ định kỳ',
+          member_id,
+          member_name: memberName,
+          description: fullNote,
+          transaction_date: new Date().toISOString().slice(0, 10),
+        });
+
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase submitPayment', e);
+      }
+    }
+
+    // Local fallback
+    const members = await dataService.getMembers();
+    const mem = members.find((m) => m.id === member_id);
+    const memberName = mem ? mem.name : 'Thành viên';
+
+    await dataService.createTransaction({
+      type: 'income',
+      amount: Number(amount),
+      category: 'Thu quỹ định kỳ',
+      member_name: memberName,
+      description: fullNote,
+      transaction_date: new Date().toISOString().slice(0, 10),
+    });
+
+    return true;
   },
 
   // ===================== TRANSACTIONS =====================
@@ -393,56 +643,45 @@ export const dataService = {
       } catch (e) {
         console.warn('Fallback getTransactions', e);
       }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        let query = supabase
+          .from('transactions')
+          .select('*')
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: false });
+
+        if (filter.type && filter.type !== 'all') {
+          query = query.eq('type', filter.type);
+        }
+        if (filter.category && filter.category !== 'all') {
+          query = query.eq('category', filter.category);
+        }
+
+        const { data } = await query;
+        if (data) {
+          return data.filter((t) => {
+            const d = new Date(t.transaction_date);
+            if (filter.month && d.getMonth() + 1 !== Number(filter.month)) return false;
+            if (filter.year && d.getFullYear() !== Number(filter.year)) return false;
+            if (filter.search) {
+              const s = filter.search.toLowerCase();
+              const matchDesc = (t.description || '').toLowerCase().includes(s);
+              const matchMember = (t.member_name || '').toLowerCase().includes(s);
+              const matchCat = (t.category || '').toLowerCase().includes(s);
+              if (!matchDesc && !matchMember && !matchCat) return false;
+            }
+            return true;
+          });
+        }
+      } catch (e) {
+        console.warn('Lỗi Supabase getTransactions', e);
+      }
     }
 
-    // Local Storage Fallback
     const local = localStorage.getItem('app_transactions');
-    let list = local ? JSON.parse(local) : [
-      {
-        id: 1,
-        type: 'income',
-        amount: 1000000,
-        category: 'Thu quỹ định kỳ',
-        member_name: 'Thủ quỹ',
-        description: 'Thu tiền quỹ tháng 9 cho 10 thành viên',
-        transaction_date: '2026-09-01',
-        receipt_url: '',
-      },
-      {
-        id: 2,
-        type: 'income',
-        amount: 500000,
-        category: 'Tài trợ',
-        member_name: 'Lê Hoàng Cường',
-        description: 'Tài trợ thêm nước ngọt cho buổi liên hoan',
-        transaction_date: '2026-09-02',
-        receipt_url: '',
-      },
-      {
-        id: 3,
-        type: 'expense',
-        amount: 450000,
-        category: 'Ăn uống',
-        member_name: 'Nguyễn Văn An',
-        description: 'Mua đồ ăn nhẹ và bánh ngọt',
-        transaction_date: '2026-09-03',
-        receipt_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&auto=format&fit=crop&q=60',
-      },
-      {
-        id: 4,
-        type: 'expense',
-        amount: 300000,
-        category: 'Thuê sân/địa điểm',
-        member_name: 'Đặng Quốc Phong',
-        description: 'Đặt sân đá bóng tuần 1',
-        transaction_date: '2026-09-04',
-        receipt_url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=500&auto=format&fit=crop&q=60',
-      },
-    ];
+    let list = local ? JSON.parse(local) : [];
 
-    if (!local) localStorage.setItem('app_transactions', JSON.stringify(list));
-
-    // Filter local list
     return list.filter((t) => {
       const d = new Date(t.transaction_date);
       if (filter.month && d.getMonth() + 1 !== Number(filter.month)) return false;
@@ -473,9 +712,16 @@ export const dataService = {
       } catch (e) {
         console.warn('Fallback createTransaction', e);
       }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        const { data } = await supabase.from('transactions').insert(tx).select().single();
+        return data?.id;
+      } catch (e) {
+        console.warn('Lỗi Supabase createTransaction', e);
+      }
     }
 
-    const txs = await dataService.getTransactions();
+    const txs = await dataService.getTransactions({});
     const newTx = { ...tx, id: Date.now(), created_at: new Date().toISOString() };
     txs.unshift(newTx);
     localStorage.setItem('app_transactions', JSON.stringify(txs));
@@ -494,9 +740,16 @@ export const dataService = {
       } catch (e) {
         console.warn('Fallback updateTransaction', e);
       }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        await supabase.from('transactions').update(tx).eq('id', id);
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase updateTransaction', e);
+      }
     }
 
-    const txs = await dataService.getTransactions();
+    const txs = await dataService.getTransactions({});
     const updated = txs.map((t) => (t.id === id ? { ...t, ...tx } : t));
     localStorage.setItem('app_transactions', JSON.stringify(updated));
     return true;
@@ -505,16 +758,21 @@ export const dataService = {
   deleteTransaction: async (id) => {
     if (STORAGE_MODE === 'local_api') {
       try {
-        await fetch(`${API_BASE_URL}/transactions?id=${id}`, {
-          method: 'DELETE',
-        });
+        await fetch(`${API_BASE_URL}/transactions?id=${id}`, { method: 'DELETE' });
         return true;
       } catch (e) {
         console.warn('Fallback deleteTransaction', e);
       }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        await supabase.from('transactions').delete().eq('id', id);
+        return true;
+      } catch (e) {
+        console.warn('Lỗi Supabase deleteTransaction', e);
+      }
     }
 
-    const txs = await dataService.getTransactions();
+    const txs = await dataService.getTransactions({});
     const updated = txs.filter((t) => t.id !== id);
     localStorage.setItem('app_transactions', JSON.stringify(updated));
     return true;

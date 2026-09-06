@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -9,16 +9,23 @@ import {
   CalendarDays,
   CreditCard,
   MessageSquare,
-  Zap
+  Zap,
+  Edit3,
+  UserPlus
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
 import { useFund } from '../context/FundContext';
 import { formatVND, formatDate } from '../utils/formatters';
+import { MemberEditModal } from './MemberEditModal';
 
 export const MemberTracker = ({ onOpenMemberQrModal }) => {
   const { isAdmin } = useAuth();
   const { contributions, toggleWeek, toggleFullMonth, currentMonth, currentYear } = useFund();
+
+  // Modal Sửa thành viên
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedMemberForEdit, setSelectedMemberForEdit] = useState(null);
 
   // Tính toán tổng số tuần đã nộp của toàn bộ nhóm (10 người x 4 tuần = 40 lượt tuần)
   let totalWeeks = 0;
@@ -59,6 +66,11 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
     toggleFullMonth(c.member_id, c.is_month_fully_paid);
   };
 
+  const handleOpenEditMember = (c) => {
+    setSelectedMemberForEdit(c);
+    setIsEditModalOpen(true);
+  };
+
   // Avatar Initials
   const getInitials = (name) => {
     if (!name) return 'TV';
@@ -79,7 +91,7 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
             </div>
             <div className="flex items-center gap-2">
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                Bảng Theo Dõi Đóng Quỹ Theo Tuần (10k / tuần)
+                Bảng Theo Dõi Đóng Quỹ Theo Tuần
               </h3>
               <span className="whitespace-nowrap px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200">
                 Tháng {currentMonth}/{currentYear}
@@ -89,7 +101,7 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
           <p className="text-xs text-slate-500 dark:text-slate-400 pl-11">
             {isAdmin ? (
               <span className="text-brand-600 dark:text-brand-400 font-semibold">
-                💡 Quyền Thủ quỹ: Bấm trực tiếp vào từng Tuần (T1, T2, T3, T4) để đổi trạng thái hoặc bấm "Nộp cả tháng (40k)"
+                💡 Quyền Thủ quỹ: Bấm vào <strong>"Sửa Tên & STK"</strong> để đổi tên thành viên thật hoặc bấm từng Tuần (T1-T4) để tích nộp.
               </span>
             ) : (
               <span>Thành viên nộp theo tuần (10k) hoặc nộp theo tháng (40k) đều được hệ thống tự động ghi nhận</span>
@@ -149,9 +161,12 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
                 
                 {/* Avatar & Name */}
                 <div 
-                  onClick={() => onOpenMemberQrModal(c)}
+                  onClick={() => {
+                    if (isAdmin) handleOpenEditMember(c);
+                    else onOpenMemberQrModal(c);
+                  }}
                   className="flex items-center gap-3 cursor-pointer group"
-                  title="Nhấp để mở mã QR chuyển tiền lại cho thành viên này"
+                  title={isAdmin ? "Nhấp để sửa tên & STK thành viên" : "Nhấp để mở mã QR chuyển tiền lại cho thành viên"}
                 >
                   <div
                     className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform ${
@@ -169,6 +184,7 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors flex items-center gap-1.5">
                       <span>{c.member_name}</span>
                       <span className="text-[10px] font-normal text-slate-400">({c.member_bank_id || 'MB'})</span>
+                      {isAdmin && <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-brand-600 inline" />}
                     </h4>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Đã đóng: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatVND(totalPaid)}</strong>
@@ -206,7 +222,7 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
 
                 <div className="grid grid-cols-4 gap-2">
                   {weeks.map((w) => {
-                    const isWeekPaid = w.is_paid === 1;
+                    const isWeekPaid = w.is_paid === 1 || w.is_paid === true;
 
                     return (
                       <button
@@ -249,6 +265,18 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
               {/* Bottom: Action Buttons */}
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                 
+                {/* Nút Sửa Tên & STK Thành viên (Dành cho Thủ Quỹ) */}
+                {isAdmin && (
+                  <button
+                    onClick={() => handleOpenEditMember(c)}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors shadow-2xs"
+                    title="Thủ quỹ sửa tên và số tài khoản thành viên"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Sửa Tên & STK</span>
+                  </button>
+                )}
+
                 {/* Nút xem QR cá nhân thành viên */}
                 <button
                   onClick={() => onOpenMemberQrModal(c)}
@@ -279,6 +307,13 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
           );
         })}
       </div>
+
+      {/* Modal Sửa Thông Tin Thành Viên */}
+      <MemberEditModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        member={selectedMemberForEdit}
+      />
 
     </div>
   );
