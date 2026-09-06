@@ -2,8 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_MODE = import.meta.env.VITE_STORAGE_MODE || 'local_api';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/QuanLyQuy/api';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const cleanSupabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+const SUPABASE_URL = cleanSupabaseUrl;
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 let supabase = null;
 if (STORAGE_MODE === 'supabase' && SUPABASE_URL && SUPABASE_ANON_KEY) {
