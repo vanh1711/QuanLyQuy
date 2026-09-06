@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_SUPABASE_URL = 'https://bhcosswmbogjjkodlbdp.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_PtVQtFbCDCBKCNVljF8JNW_Ui5r9vnT';
+const DEFAULT_SUPABASE_URL = 'https://bhcosxwmbogjjkcdlbdp.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY29zeHdtYm9namprY2RsYmRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MDI5NzAsImV4cCI6MjEwNDI3ODk3MH0.Jp7PrlB2NzX_mqPBjsZVrX_prytP5w1hxseG4cPYxr0';
 
 const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const cleanSupabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
