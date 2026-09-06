@@ -57,8 +57,46 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
 
   const memberId = member?.member_id || member?.id;
 
+  // Nén ảnh siêu nhẹ (khoảng 20-30KB) để lưu vào Supabase tức thì
+  const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = reject;
+        img.src = event.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Xử lý upload file ảnh QR từ máy tính / điện thoại
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -67,20 +105,13 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
       return;
     }
 
-    if (file.size > 4 * 1024 * 1024) {
-      setErrorMsg('Kích thước ảnh không vượt quá 4MB');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setQrUrl(reader.result);
+    try {
+      const compressedDataUrl = await compressImage(file);
+      setQrUrl(compressedDataUrl);
       setErrorMsg('');
-    };
-    reader.onerror = () => {
+    } catch (err) {
       setErrorMsg('Không thể đọc file ảnh, vui lòng thử lại');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleSave = async (e) => {

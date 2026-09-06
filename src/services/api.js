@@ -282,6 +282,7 @@ export const dataService = {
   },
 
   updateMember: async (id, memberData) => {
+    const memberIdNum = Number(id) || id;
     const payload = {
       name: memberData.name,
       phone: memberData.phone || '',
@@ -307,11 +308,11 @@ export const dataService = {
         const { error } = await supabase
           .from('members')
           .update({ ...payload, qr_url: memberData.qr_url || memberData.avatar_url || '' })
-          .eq('id', id);
+          .eq('id', memberIdNum);
 
         if (error) {
           // Nếu cột qr_url chưa có trong Supabase, lưu vào avatar_url
-          await supabase.from('members').update(payload).eq('id', id);
+          await supabase.from('members').update(payload).eq('id', memberIdNum);
         }
       } catch (e) {
         console.warn('Lỗi Supabase updateMember', e);
@@ -319,18 +320,23 @@ export const dataService = {
     }
 
     // Luôn cập nhật bộ nhớ đệm Local Storage để UI phản hồi tức thì
-    const members = await dataService.getMembers();
-    const updated = members.map((m) =>
-      m.id === id
-        ? {
-            ...m,
-            ...memberData,
-            ...payload,
-            qr_url: memberData.qr_url || memberData.avatar_url || m.qr_url || m.avatar_url || '',
-          }
-        : m
-    );
-    localStorage.setItem('app_members', JSON.stringify(updated));
+    try {
+      const localStr = localStorage.getItem('app_members');
+      const members = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
+      const updated = members.map((m) =>
+        String(m.id) === String(id)
+          ? {
+              ...m,
+              ...memberData,
+              ...payload,
+              qr_url: memberData.qr_url || memberData.avatar_url || m.qr_url || m.avatar_url || '',
+            }
+          : m
+      );
+      localStorage.setItem('app_members', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('LocalStorage error in updateMember', e);
+    }
     return true;
   },
 
@@ -365,14 +371,20 @@ export const dataService = {
       }
     }
 
-    const members = await dataService.getMembers();
-    const newMember = { ...payload, id: Date.now() };
-    members.push(newMember);
-    localStorage.setItem('app_members', JSON.stringify(members));
-    return newMember.id;
+    try {
+      const localStr = localStorage.getItem('app_members');
+      const members = localStr ? JSON.parse(localStr) : [...DEFAULT_MEMBERS];
+      const newMember = { ...payload, id: Date.now() };
+      members.push(newMember);
+      localStorage.setItem('app_members', JSON.stringify(members));
+      return newMember.id;
+    } catch (e) {
+      return Date.now();
+    }
   },
 
   deleteMember: async (id) => {
+    const memberIdNum = Number(id) || id;
     if (STORAGE_MODE === 'local_api') {
       try {
         await fetch(`${API_BASE_URL}/members?id=${id}`, { method: 'DELETE' });
@@ -381,15 +393,18 @@ export const dataService = {
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
-        await supabase.from('members').delete().eq('id', id);
+        await supabase.from('members').delete().eq('id', memberIdNum);
       } catch (e) {
         console.warn('Lỗi Supabase deleteMember', e);
       }
     }
 
-    const members = await dataService.getMembers();
-    const updated = members.filter((m) => m.id !== id);
-    localStorage.setItem('app_members', JSON.stringify(updated));
+    try {
+      const localStr = localStorage.getItem('app_members');
+      const members = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
+      const updated = members.filter((m) => String(m.id) !== String(id));
+      localStorage.setItem('app_members', JSON.stringify(updated));
+    } catch (e) {}
     return true;
   },
 
@@ -427,7 +442,7 @@ export const dataService = {
             for (let w = 1; w <= 4; w++) {
               if (!existingMap.has(`${m.id}_${w}`)) {
                 toInsert.push({
-                  member_id: m.id,
+                  member_id: Number(m.id) || m.id,
                   year,
                   month,
                   week: w,
@@ -440,9 +455,11 @@ export const dataService = {
 
           if (toInsert.length > 0) {
             try {
-              await supabase.from('fund_contributions').insert(toInsert);
+              await supabase
+                .from('fund_contributions')
+                .upsert(toInsert, { onConflict: 'member_id,year,month,week', ignoreDuplicates: true });
             } catch (insErr) {
-              console.warn('Lỗi insert fund_contributions', insErr);
+              console.warn('Lỗi upsert fund_contributions', insErr);
             }
           }
 
@@ -457,12 +474,13 @@ export const dataService = {
 
           const grouped = {};
           (allWeeks || []).forEach((w) => {
-            if (!grouped[w.member_id]) grouped[w.member_id] = [];
-            grouped[w.member_id].push(w);
+            const key = String(w.member_id);
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(w);
           });
 
           return members.map((m) => {
-            let weeks = grouped[m.id] || [];
+            let weeks = grouped[String(m.id)] || [];
             if (weeks.length === 0) {
               weeks = [1, 2, 3, 4].map((w) => ({
                 id: `${m.id}_${w}`,
