@@ -292,38 +292,11 @@ export const dataService = {
       avatar_url: memberData.qr_url || memberData.avatar_url || '',
     };
 
-    if (STORAGE_MODE === 'local_api') {
-      try {
-        await fetch(`${API_BASE_URL}/members?id=${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...memberData, ...payload }),
-        });
-      } catch (e) {
-        console.warn('Fallback updateMember local_api', e);
-      }
-    } else if (STORAGE_MODE === 'supabase' && supabase) {
-      try {
-        // Thử cập nhật với cả qr_url nếu cột tồn tại
-        const { error } = await supabase
-          .from('members')
-          .update({ ...payload, qr_url: memberData.qr_url || memberData.avatar_url || '' })
-          .eq('id', memberIdNum);
-
-        if (error) {
-          // Nếu cột qr_url chưa có trong Supabase, lưu vào avatar_url
-          await supabase.from('members').update(payload).eq('id', memberIdNum);
-        }
-      } catch (e) {
-        console.warn('Lỗi Supabase updateMember', e);
-      }
-    }
-
-    // Luôn cập nhật bộ nhớ đệm Local Storage để UI phản hồi tức thì
+    // 1. Cập nhật bộ nhớ đệm Local Storage ngay lập tức để UI phản hồi tức thì
     try {
       const localStr = localStorage.getItem('app_members');
-      const members = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
-      const updated = members.map((m) =>
+      const currentList = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
+      const updated = currentList.map((m) =>
         String(m.id) === String(id)
           ? {
               ...m,
@@ -337,6 +310,36 @@ export const dataService = {
     } catch (e) {
       console.warn('LocalStorage error in updateMember', e);
     }
+
+    // 2. Gửi lệnh cập nhật lên Backend / Supabase
+    if (STORAGE_MODE === 'local_api') {
+      try {
+        await fetch(`${API_BASE_URL}/members?id=${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...memberData, ...payload }),
+        });
+      } catch (e) {
+        console.warn('Fallback updateMember local_api', e);
+      }
+    } else if (STORAGE_MODE === 'supabase' && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .update(payload)
+          .eq('id', memberIdNum)
+          .select();
+
+        if (error) {
+          console.error('Lỗi Supabase updateMember (Kiểm tra RLS permissions):', error);
+        } else {
+          console.log('Đã cập nhật Supabase thành công:', data);
+        }
+      } catch (e) {
+        console.error('Ngoại lệ Supabase updateMember', e);
+      }
+    }
+
     return true;
   },
 
