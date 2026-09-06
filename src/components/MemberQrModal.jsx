@@ -45,11 +45,14 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
   const currentAccountName = accountName || member.member_bank_account_name || member.bank_account_name || member.member_name || member.name || 'THANH VIEN';
   const memberDisplayName = member.member_name || member.name || 'Thành viên';
 
+  const customQrImage = member.member_qr_url || member.qr_url || member.avatar_url || '';
+  const [activeQrTab, setActiveQrTab] = useState(() => (customQrImage ? 'custom' : 'vietqr'));
+
   const amountNumber = parseFormattedNumber(refundAmount) || 50000;
   const content = transferReason.trim() || `Chuyen tien cho ${memberDisplayName}`;
 
   // Sinh mã VietQR của thành viên
-  const qrUrl = generateVietQRUrl({
+  const vietQrUrl = generateVietQRUrl({
     bankId: currentBankId,
     accountNo: currentAccountNo,
     accountName: currentAccountName,
@@ -57,6 +60,8 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
     content: content,
     template: 'compact2',
   });
+
+  const displayQrUrl = activeQrTab === 'custom' && customQrImage ? customQrImage : vietQrUrl;
 
   const handleCopy = (text, field) => {
     navigator.clipboard.writeText(text);
@@ -66,17 +71,17 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
 
   const handleDownloadQR = async () => {
     try {
-      const response = await fetch(qrUrl);
+      const response = await fetch(displayQrUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `VietQR_ChuyenTien_${memberDisplayName}.png`;
+      link.download = `QR_ChuyenTien_${memberDisplayName}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch {
-      window.open(qrUrl, '_blank');
+      window.open(displayQrUrl, '_blank');
     }
   };
 
@@ -87,16 +92,18 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
       bank_account_no: currentAccountNo,
       bank_account_name: currentAccountName,
       phone: member.member_phone || member.phone || '',
+      qr_url: customQrImage,
+      avatar_url: customQrImage,
     });
     setIsEditingBank(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-slide-up my-6 max-h-[92vh] flex flex-col">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/30">
               <ArrowLeftRight className="w-5 h-5" />
@@ -106,7 +113,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
                 Mã QR Chuyển Tiền Cho: {memberDisplayName}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Dành cho Thủ quỹ hoặc thành viên chuyển lại tiền / chia tiền
+                Thủ quỹ chuyển lại tiền / chia tiền quỹ cho thành viên
               </p>
             </div>
           </div>
@@ -120,60 +127,104 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs">
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs flex-1">
           
+          {/* Tabs nếu thành viên có ảnh QR thủ quỹ đã tải lên */}
+          {customQrImage && (
+            <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setActiveQrTab('custom')}
+                className={`flex-1 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                  activeQrTab === 'custom'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Ảnh QR Riêng (Thủ quỹ up)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveQrTab('vietqr')}
+                className={`flex-1 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                  activeQrTab === 'vietqr'
+                    ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <QrCode className="w-3.5 h-3.5 text-brand-500" />
+                <span>VietQR Tự Động (Theo Số Tiền)</span>
+              </button>
+            </div>
+          )}
+
           {/* QR Image & Controls */}
           <div className="flex flex-col sm:flex-row items-center gap-5 p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-            <div className="bg-white p-2 rounded-xl shadow-md border border-slate-200 shrink-0">
+            <div className="bg-white p-2 rounded-2xl shadow-md border border-slate-200 shrink-0 flex items-center justify-center">
               <img
-                src={qrUrl}
-                alt={`VietQR ${memberDisplayName}`}
-                className="w-40 sm:w-44 h-auto rounded-lg object-contain"
+                src={displayQrUrl}
+                alt={`QR ${memberDisplayName}`}
+                className="w-40 sm:w-44 h-auto max-h-56 rounded-xl object-contain"
               />
             </div>
 
             <div className="flex-1 space-y-3 w-full">
-              {/* Số tiền cần chuyển lại */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Số tiền muốn chuyển lại</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(formatNumberInput(e.target.value))}
-                    className="w-full px-3 py-2 text-xs font-extrabold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    placeholder="50.000"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[10px] text-slate-400">
-                    VNĐ
-                  </span>
-                </div>
-              </div>
+              {activeQrTab === 'vietqr' || !customQrImage ? (
+                <>
+                  {/* Số tiền cần chuyển lại */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Số tiền muốn chuyển lại</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(formatNumberInput(e.target.value))}
+                        className="w-full px-3 py-2 text-xs font-extrabold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                        placeholder="50.000"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[10px] text-slate-400">
+                        VNĐ
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Lý do chuyển tiền */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">
-                  Lý do chuyển / Nội dung
-                </label>
-                <input
-                  type="text"
-                  value={transferReason}
-                  onChange={(e) => setTransferReason(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  placeholder="Hoan tien mua do, chia quy..."
-                />
-              </div>
+                  {/* Lý do chuyển tiền */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 dark:text-slate-300">
+                      Lý do chuyển / Nội dung
+                    </label>
+                    <input
+                      type="text"
+                      value={transferReason}
+                      onChange={(e) => setTransferReason(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      placeholder="Hoan tien mua do, chia quy..."
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2 p-3 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    Đang hiển thị mã QR gốc của thành viên
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Mã QR này do Thủ Quỹ tải lên trực tiếp. Bạn có thể mở ứng dụng ngân hàng quét trực tiếp mã này để chuyển tiền.
+                  </p>
+                </div>
+              )}
 
               {/* Tải QR */}
               <button
                 onClick={handleDownloadQR}
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs hover:bg-slate-300 transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Tải ảnh QR thành viên</span>
+                <span>Tải ảnh QR này về máy</span>
               </button>
             </div>
           </div>

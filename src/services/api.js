@@ -244,9 +244,9 @@ export const dataService = {
       try {
         const res = await fetch(`${API_BASE_URL}/members`);
         const json = await res.json();
-        if (json.status === 'success' && json.data) return json.data;
+        if (json.status === 'success' && json.data && json.data.length > 0) return json.data;
       } catch (e) {
-        console.warn('Fallback getMembers', e);
+        console.warn('Fallback getMembers local_api', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
@@ -254,50 +254,102 @@ export const dataService = {
           .from('members')
           .select('*')
           .order('id', { ascending: true });
-        if (data && data.length > 0) return data;
+        
+        if (!error && data && data.length > 0) {
+          localStorage.setItem('app_members', JSON.stringify(data));
+          return data;
+        }
+
+        // Nếu bảng members trống, tự động nạp 10 thành viên mẫu
+        if (!error && data && data.length === 0) {
+          await supabase.from('members').insert(DEFAULT_MEMBERS);
+          localStorage.setItem('app_members', JSON.stringify(DEFAULT_MEMBERS));
+          return DEFAULT_MEMBERS;
+        }
       } catch (e) {
         console.warn('Lỗi Supabase getMembers', e);
       }
     }
 
     const local = localStorage.getItem('app_members');
-    return local ? JSON.parse(local) : DEFAULT_MEMBERS;
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_MEMBERS;
   },
 
   updateMember: async (id, memberData) => {
+    const payload = {
+      name: memberData.name,
+      phone: memberData.phone || '',
+      bank_id: memberData.bank_id || 'MBBank',
+      bank_account_no: memberData.bank_account_no || '',
+      bank_account_name: memberData.bank_account_name || '',
+      avatar_url: memberData.qr_url || memberData.avatar_url || '',
+    };
+
     if (STORAGE_MODE === 'local_api') {
       try {
         await fetch(`${API_BASE_URL}/members?id=${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(memberData),
+          body: JSON.stringify({ ...memberData, ...payload }),
         });
-        return true;
       } catch (e) {
         console.warn('Fallback updateMember local_api', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
-        await supabase.from('members').update(memberData).eq('id', id);
-        return true;
+        // Thử cập nhật với cả qr_url nếu cột tồn tại
+        const { error } = await supabase
+          .from('members')
+          .update({ ...payload, qr_url: memberData.qr_url || memberData.avatar_url || '' })
+          .eq('id', id);
+
+        if (error) {
+          // Nếu cột qr_url chưa có trong Supabase, lưu vào avatar_url
+          await supabase.from('members').update(payload).eq('id', id);
+        }
       } catch (e) {
         console.warn('Lỗi Supabase updateMember', e);
       }
     }
 
+    // Luôn cập nhật bộ nhớ đệm Local Storage để UI phản hồi tức thì
     const members = await dataService.getMembers();
-    const updated = members.map((m) => (m.id === id ? { ...m, ...memberData } : m));
+    const updated = members.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            ...memberData,
+            ...payload,
+            qr_url: memberData.qr_url || memberData.avatar_url || m.qr_url || m.avatar_url || '',
+          }
+        : m
+    );
     localStorage.setItem('app_members', JSON.stringify(updated));
     return true;
   },
 
   createMember: async (memberData) => {
+    const payload = {
+      name: memberData.name,
+      phone: memberData.phone || '',
+      bank_id: memberData.bank_id || 'MBBank',
+      bank_account_no: memberData.bank_account_no || '',
+      bank_account_name: memberData.bank_account_name || '',
+      avatar_url: memberData.qr_url || memberData.avatar_url || '',
+    };
+
     if (STORAGE_MODE === 'local_api') {
       try {
         const res = await fetch(`${API_BASE_URL}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(memberData),
+          body: JSON.stringify(payload),
         });
         const json = await res.json();
         return json.id;
@@ -306,15 +358,15 @@ export const dataService = {
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
-        const { data } = await supabase.from('members').insert(memberData).select().single();
-        return data?.id;
+        const { data, error } = await supabase.from('members').insert(payload).select().single();
+        if (!error && data?.id) return data.id;
       } catch (e) {
         console.warn('Lỗi Supabase createMember', e);
       }
     }
 
     const members = await dataService.getMembers();
-    const newMember = { ...memberData, id: Date.now() };
+    const newMember = { ...payload, id: Date.now() };
     members.push(newMember);
     localStorage.setItem('app_members', JSON.stringify(members));
     return newMember.id;
@@ -324,14 +376,12 @@ export const dataService = {
     if (STORAGE_MODE === 'local_api') {
       try {
         await fetch(`${API_BASE_URL}/members?id=${id}`, { method: 'DELETE' });
-        return true;
       } catch (e) {
         console.warn('Fallback deleteMember', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
         await supabase.from('members').delete().eq('id', id);
-        return true;
       } catch (e) {
         console.warn('Lỗi Supabase deleteMember', e);
       }
@@ -347,101 +397,128 @@ export const dataService = {
   getContributions: async (month, year) => {
     const settings = await dataService.getSettings();
     const weeklyAmount = Number(settings.weekly_amount) || 10000;
-    const members = await dataService.getMembers();
+    let members = await dataService.getMembers();
+    if (!members || members.length === 0) {
+      members = DEFAULT_MEMBERS;
+    }
 
     if (STORAGE_MODE === 'local_api') {
       try {
         const res = await fetch(`${API_BASE_URL}/contributions?month=${month}&year=${year}`);
         const json = await res.json();
-        if (json.status === 'success' && json.data) return json.data;
+        if (json.status === 'success' && json.data && json.data.length > 0) return json.data;
       } catch (e) {
         console.warn('Fallback getContributions local_api', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
         // 1. Đảm bảo 4 tuần tồn tại trong DB Supabase
-        const { data: existingWeeks } = await supabase
+        const { data: existingWeeks, error: selectErr } = await supabase
           .from('fund_contributions')
           .select('*')
           .eq('month', month)
           .eq('year', year);
 
-        const existingMap = new Set((existingWeeks || []).map((w) => `${w.member_id}_${w.week}`));
-        const toInsert = [];
+        if (!selectErr) {
+          const existingMap = new Set((existingWeeks || []).map((w) => `${w.member_id}_${w.week}`));
+          const toInsert = [];
 
-        for (const m of members) {
-          for (let w = 1; w <= 4; w++) {
-            if (!existingMap.has(`${m.id}_${w}`)) {
-              toInsert.push({
+          for (const m of members) {
+            for (let w = 1; w <= 4; w++) {
+              if (!existingMap.has(`${m.id}_${w}`)) {
+                toInsert.push({
+                  member_id: m.id,
+                  year,
+                  month,
+                  week: w,
+                  amount: weeklyAmount,
+                  is_paid: 0,
+                });
+              }
+            }
+          }
+
+          if (toInsert.length > 0) {
+            try {
+              await supabase.from('fund_contributions').insert(toInsert);
+            } catch (insErr) {
+              console.warn('Lỗi insert fund_contributions', insErr);
+            }
+          }
+
+          // 2. Lấy lại danh sách 4 tuần đã nạp
+          const { data: allWeeks } = await supabase
+            .from('fund_contributions')
+            .select('*')
+            .eq('month', month)
+            .eq('year', year)
+            .order('member_id', { ascending: true })
+            .order('week', { ascending: true });
+
+          const grouped = {};
+          (allWeeks || []).forEach((w) => {
+            if (!grouped[w.member_id]) grouped[w.member_id] = [];
+            grouped[w.member_id].push(w);
+          });
+
+          return members.map((m) => {
+            let weeks = grouped[m.id] || [];
+            if (weeks.length === 0) {
+              weeks = [1, 2, 3, 4].map((w) => ({
+                id: `${m.id}_${w}`,
                 member_id: m.id,
-                year,
-                month,
                 week: w,
                 amount: weeklyAmount,
                 is_paid: 0,
-              });
+                paid_at: null,
+                note: null,
+              }));
             }
-          }
-        }
 
-        if (toInsert.length > 0) {
-          await supabase.from('fund_contributions').insert(toInsert);
-        }
+            let paidCount = 0;
+            let totalPaid = 0;
+            const notes = [];
 
-        // 2. Lấy lại danh sách 4 tuần đã nạp
-        const { data: allWeeks } = await supabase
-          .from('fund_contributions')
-          .select('*')
-          .eq('month', month)
-          .eq('year', year)
-          .order('member_id', { ascending: true })
-          .order('week', { ascending: true });
+            weeks.forEach((w) => {
+              if (w.is_paid === 1 || w.is_paid === true) {
+                paidCount++;
+                totalPaid += Number(w.amount);
+              }
+              if (w.note) notes.push(w.note);
+            });
 
-        const grouped = {};
-        allWeeks?.forEach((w) => {
-          if (!grouped[w.member_id]) grouped[w.member_id] = [];
-          grouped[w.member_id].push(w);
-        });
-
-        return members.map((m) => {
-          const weeks = grouped[m.id] || [];
-          let paidCount = 0;
-          let totalPaid = 0;
-          const notes = [];
-
-          weeks.forEach((w) => {
-            if (w.is_paid === 1 || w.is_paid === true) {
-              paidCount++;
-              totalPaid += Number(w.amount);
-            }
-            if (w.note) notes.push(w.note);
+            return {
+              member_id: m.id,
+              member_name: m.name,
+              member_phone: m.phone || '',
+              member_bank_id: m.bank_id || 'MBBank',
+              member_bank_account_no: m.bank_account_no || '',
+              member_bank_account_name: m.bank_account_name || '',
+              member_qr_url: m.qr_url || m.avatar_url || '',
+              month,
+              year,
+              weeks,
+              paid_weeks_count: paidCount,
+              total_paid: totalPaid,
+              is_month_fully_paid: paidCount >= 4,
+              note: notes.length > 0 ? Array.from(new Set(notes)).join(', ') : '',
+            };
           });
-
-          return {
-            member_id: m.id,
-            member_name: m.name,
-            member_phone: m.phone || '',
-            member_bank_id: m.bank_id || 'MBBank',
-            member_bank_account_no: m.bank_account_no || '',
-            member_bank_account_name: m.bank_account_name || '',
-            month,
-            year,
-            weeks,
-            paid_weeks_count: paidCount,
-            total_paid: totalPaid,
-            is_month_fully_paid: paidCount >= 4,
-            note: notes.length > 0 ? Array.from(new Set(notes)).join(', ') : '',
-          };
-        });
+        }
       } catch (e) {
         console.warn('Lỗi Supabase getContributions', e);
       }
     }
 
-    // Local Storage fallback
+    // Local Storage fallback an toàn
     const storageKey = `contributions_${year}_${month}`;
     const local = localStorage.getItem(storageKey);
-    if (local) return JSON.parse(local);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
 
     const initial = members.map((m) => {
       const weeks = [1, 2, 3, 4].map((w) => ({
@@ -461,6 +538,7 @@ export const dataService = {
         member_bank_id: m.bank_id || 'MBBank',
         member_bank_account_no: m.bank_account_no || '',
         member_bank_account_name: m.bank_account_name || '',
+        member_qr_url: m.qr_url || m.avatar_url || '',
         month,
         year,
         weeks,

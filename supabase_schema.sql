@@ -18,6 +18,7 @@ CREATE TABLE members (
     bank_account_no TEXT DEFAULT '',
     bank_account_name TEXT DEFAULT '',
     avatar_url TEXT DEFAULT '',
+    qr_url TEXT DEFAULT '',
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

@@ -136,177 +136,208 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
       </div>
 
       {/* Bảng Danh Sách 10 Thành Viên x 4 Tuần */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {contributions.map((c, index) => {
-          const weeks = c.weeks || [];
-          const isFullyPaid = c.is_month_fully_paid;
-          const paidWeeksCount = c.paid_weeks_count || 0;
-          const totalPaid = c.total_paid || 0;
-          const debt = Math.max(0, 40000 - totalPaid);
+      {contributions.length === 0 ? (
+        <div className="text-center py-12 px-4 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+          <Users className="w-10 h-10 text-slate-400 mx-auto animate-bounce" />
+          <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Đang tải hoặc chưa có danh sách thành viên
+          </h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+            Hệ thống đang đồng bộ dữ liệu với máy chủ. Nếu chưa hiện, bạn hãy bấm tải lại nhé!
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-md shadow-brand-500/20 transition-all"
+          >
+            🔄 Tải lại trang
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {contributions.map((c, index) => {
+            const weeks = c.weeks || [];
+            const isFullyPaid = c.is_month_fully_paid;
+            const paidWeeksCount = c.paid_weeks_count || 0;
+            const totalPaid = c.total_paid || 0;
+            const debt = Math.max(0, 40000 - totalPaid);
+            const hasCustomQr = !!c.member_qr_url;
 
-          return (
-            <div
-              key={c.member_id || index}
-              className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 space-y-4 hover:shadow-md ${
-                isFullyPaid
-                  ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/50'
-                  : paidWeeksCount > 0
-                  ? 'bg-brand-50/20 dark:bg-brand-950/10 border-brand-200/60 dark:border-brand-800/40'
-                  : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
-              }`}
-            >
-              
-              {/* Top: Thông tin thành viên & Trạng thái */}
-              <div className="flex items-start justify-between gap-3">
+            return (
+              <div
+                key={c.member_id || index}
+                className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 space-y-4 hover:shadow-md ${
+                  isFullyPaid
+                    ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/50'
+                    : paidWeeksCount > 0
+                    ? 'bg-brand-50/20 dark:bg-brand-950/10 border-brand-200/60 dark:border-brand-800/40'
+                    : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
+                }`}
+              >
                 
-                {/* Avatar & Name */}
-                <div 
-                  onClick={() => {
-                    if (isAdmin) handleOpenEditMember(c);
-                    else onOpenMemberQrModal(c);
-                  }}
-                  className="flex items-center gap-3 cursor-pointer group"
-                  title={isAdmin ? "Nhấp để sửa tên & STK thành viên" : "Nhấp để mở mã QR chuyển tiền lại cho thành viên"}
-                >
-                  <div
-                    className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform ${
-                      isFullyPaid
-                        ? 'bg-emerald-500 text-white shadow-emerald-500/30'
-                        : paidWeeksCount > 0
-                        ? 'bg-brand-600 text-white shadow-brand-500/30'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                    }`}
+                {/* Top: Thông tin thành viên & Trạng thái */}
+                <div className="flex items-start justify-between gap-3">
+                  
+                  {/* Avatar & Name */}
+                  <div 
+                    onClick={() => {
+                      if (isAdmin) handleOpenEditMember(c);
+                      else onOpenMemberQrModal(c);
+                    }}
+                    className="flex items-center gap-3 cursor-pointer group"
+                    title={isAdmin ? "Nhấp để sửa tên, STK & ảnh QR thành viên" : "Nhấp để mở mã QR chuyển tiền lại cho thành viên"}
                   >
-                    {getInitials(c.member_name)}
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform ${
+                        isFullyPaid
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/30'
+                          : paidWeeksCount > 0
+                          ? 'bg-brand-600 text-white shadow-brand-500/30'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      {getInitials(c.member_name)}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors flex items-center gap-1.5">
+                          <span>{c.member_name}</span>
+                          <span className="text-[10px] font-normal text-slate-400">({c.member_bank_id || 'MB'})</span>
+                          {isAdmin && <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-brand-600 inline" />}
+                        </h4>
+                        {hasCustomQr && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[9px] font-extrabold border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" title="Thủ quỹ đã tải lên ảnh QR riêng cho thành viên này">
+                            <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                            Đã có QR
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Đã đóng: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatVND(totalPaid)}</strong>
+                        {debt > 0 && <span className="text-rose-500 ml-1.5 font-medium">(Thiếu {formatVND(debt)})</span>}
+                      </p>
+                    </div>
                   </div>
 
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors flex items-center gap-1.5">
-                      <span>{c.member_name}</span>
-                      <span className="text-[10px] font-normal text-slate-400">({c.member_bank_id || 'MB'})</span>
-                      {isAdmin && <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-brand-600 inline" />}
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Đã đóng: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatVND(totalPaid)}</strong>
-                      {debt > 0 && <span className="text-rose-500 ml-1.5 font-medium">(Thiếu {formatVND(debt)})</span>}
-                    </p>
+                  {/* Badge trạng thái cả tháng */}
+                  <div className="shrink-0">
+                    {isFullyPaid ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        <Check className="w-3.5 h-3.5" />
+                        Đủ 4/4 tuần
+                      </span>
+                    ) : paidWeeksCount > 0 ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        Đã nộp {paidWeeksCount}/4 tuần
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                        Chưa nộp (0/4)
+                      </span>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* Middle: 4 Ô TUẦN TRONG THÁNG (T1, T2, T3, T4) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    <span>Chi tiết 4 tuần tháng {currentMonth}:</span>
+                    <span>10.000đ / tuần</span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {weeks.map((w) => {
+                      const isWeekPaid = w.is_paid === 1 || w.is_paid === true;
+
+                      return (
+                        <button
+                          key={w.id || w.week}
+                          type="button"
+                          disabled={!isAdmin}
+                          onClick={() => handleToggleWeek(w)}
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
+                            isWeekPaid
+                              ? 'bg-emerald-500 text-white border-emerald-500 shadow-xs shadow-emerald-500/20'
+                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand-400'
+                          } ${isAdmin ? 'cursor-pointer hover:scale-[1.02] active:scale-95' : 'cursor-default'}`}
+                          title={
+                            isAdmin
+                              ? `Tuần ${w.week}: ${isWeekPaid ? 'Đã nộp (Click để hủy)' : 'Chưa nộp (Click để tích đã nộp)'}`
+                              : `Tuần ${w.week}: ${isWeekPaid ? 'Đã nộp' : 'Chưa nộp'}`
+                          }
+                        >
+                          <div className="flex items-center gap-1">
+                            {isWeekPaid && <Check className="w-3 h-3" />}
+                            <span>Tuần {w.week}</span>
+                          </div>
+                          <span className="text-[10px] font-normal opacity-90">10k</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Badge trạng thái cả tháng */}
-                <div className="shrink-0">
-                  {isFullyPaid ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      <Check className="w-3.5 h-3.5" />
-                      Đủ 4/4 tuần
+                {/* Lời nhắn / Ghi chú của thành viên nếu có */}
+                {c.note && (
+                  <div className="p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-brand-500 shrink-0 mt-0.5" />
+                    <span className="truncate" title={c.note}>
+                      Lời nhắn: <strong>{c.note}</strong>
                     </span>
-                  ) : paidWeeksCount > 0 ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                      Đã nộp {paidWeeksCount}/4 tuần
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
-                      Chưa nộp (0/4)
-                    </span>
+                  </div>
+                )}
+
+                {/* Bottom: Action Buttons */}
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                  
+                  {/* Nút Sửa Tên & STK Thành viên (Dành cho Thủ Quỹ) */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleOpenEditMember(c)}
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors shadow-2xs"
+                      title="Thủ quỹ sửa tên, STK và upload mã QR thành viên"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Sửa & Up QR</span>
+                    </button>
                   )}
-                </div>
 
-              </div>
-
-              {/* Middle: 4 Ô TUẦN TRONG THÁNG (T1, T2, T3, T4) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  <span>Chi tiết 4 tuần tháng {currentMonth}:</span>
-                  <span>10.000đ / tuần</span>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {weeks.map((w) => {
-                    const isWeekPaid = w.is_paid === 1 || w.is_paid === true;
-
-                    return (
-                      <button
-                        key={w.id || w.week}
-                        type="button"
-                        disabled={!isAdmin}
-                        onClick={() => handleToggleWeek(w)}
-                        className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
-                          isWeekPaid
-                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-xs shadow-emerald-500/20'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand-400'
-                        } ${isAdmin ? 'cursor-pointer hover:scale-[1.02] active:scale-95' : 'cursor-default'}`}
-                        title={
-                          isAdmin
-                            ? `Tuần ${w.week}: ${isWeekPaid ? 'Đã nộp (Click để hủy)' : 'Chưa nộp (Click để tích đã nộp)'}`
-                            : `Tuần ${w.week}: ${isWeekPaid ? 'Đã nộp' : 'Chưa nộp'}`
-                        }
-                      >
-                        <div className="flex items-center gap-1">
-                          {isWeekPaid && <Check className="w-3 h-3" />}
-                          <span>Tuần {w.week}</span>
-                        </div>
-                        <span className="text-[10px] font-normal opacity-90">10k</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Lời nhắn / Ghi chú của thành viên nếu có */}
-              {c.note && (
-                <div className="p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5 text-brand-500 shrink-0 mt-0.5" />
-                  <span className="truncate" title={c.note}>
-                    Lời nhắn: <strong>{c.note}</strong>
-                  </span>
-                </div>
-              )}
-
-              {/* Bottom: Action Buttons */}
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                
-                {/* Nút Sửa Tên & STK Thành viên (Dành cho Thủ Quỹ) */}
-                {isAdmin && (
+                  {/* Nút xem QR cá nhân thành viên */}
                   <button
-                    onClick={() => handleOpenEditMember(c)}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors shadow-2xs"
-                    title="Thủ quỹ sửa tên và số tài khoản thành viên"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Sửa Tên & STK</span>
-                  </button>
-                )}
-
-                {/* Nút xem QR cá nhân thành viên */}
-                <button
-                  onClick={() => onOpenMemberQrModal(c)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 text-xs font-semibold shadow-2xs transition-colors"
-                >
-                  <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>QR Hoàn tiền</span>
-                </button>
-
-                {/* Nút Đóng cả tháng (Dành cho Thủ quỹ 1-click) */}
-                {isAdmin && (
-                  <button
-                    onClick={() => handleToggleFullMonth(c)}
-                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all ${
-                      isFullyPaid
-                        ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 hover:bg-rose-100'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/30'
+                    onClick={() => onOpenMemberQrModal(c)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors ${
+                      hasCustomQr
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>{isFullyPaid ? 'Hủy cả tháng' : 'Nộp cả tháng (40k)'}</span>
+                    <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>QR Hoàn tiền</span>
                   </button>
-                )}
+
+                  {/* Nút Đóng cả tháng (Dành cho Thủ quỹ 1-click) */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleToggleFullMonth(c)}
+                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
+                        isFullyPaid
+                          ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 hover:bg-rose-100'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/30'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>{isFullyPaid ? 'Hủy' : 'Nộp tháng'}</span>
+                    </button>
+                  )}
+
+                </div>
 
               </div>
-
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal Sửa Thông Tin Thành Viên */}
       <MemberEditModal
