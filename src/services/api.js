@@ -1,19 +1,51 @@
 import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_SUPABASE_URL = 'https://bhcosxwmbogjjkcdlbdp.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY29zeHdtYm9namprY2RsYmRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MDI5NzAsImV4cCI6MjEwNDI3ODk3MH0.Jp7PrlB2NzX_mqPBjsZVrX_prytP5w1hxseG4cPYxr0';
+const VERIFIED_SUPABASE_URL = 'https://bhcosxwmbogjjkcdlbdp.supabase.co';
+const VERIFIED_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY29zeHdtYm9namprY2RsYmRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MDI5NzAsImV4cCI6MjEwNDI3ODk3MH0.Jp7PrlB2NzX_mqPBjsZVrX_prytP5w1hxseG4cPYxr0';
 
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
-const cleanSupabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
-const SUPABASE_URL = cleanSupabaseUrl;
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+
+// Luôn kiểm tra tính hợp lệ của URL Supabase
+let rawUrl = (env.VITE_SUPABASE_URL || '').trim();
+if (!rawUrl || rawUrl.includes('bhcosswmbogjjkodlbdp') || !rawUrl.startsWith('http')) {
+  rawUrl = VERIFIED_SUPABASE_URL;
+}
+const SUPABASE_URL = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+
+// Luôn kiểm tra tính hợp lệ của Supabase JWT Key (bắt đầu bằng eyJ)
+let rawKey = (env.VITE_SUPABASE_ANON_KEY || '').trim();
+if (!rawKey || !rawKey.startsWith('eyJ')) {
+  rawKey = VERIFIED_SUPABASE_ANON_KEY;
+}
+const SUPABASE_ANON_KEY = rawKey;
 
 // Luôn sử dụng Supabase Cloud trực tiếp
 const STORAGE_MODE = 'supabase';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/QuanLyQuy/api';
+const API_BASE_URL = env.VITE_API_BASE_URL || 'http://localhost/QuanLyQuy/api';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 console.log('⚡ Supabase Cloud Connected:', SUPABASE_URL);
+
+// An toàn bộ nhớ cục bộ
+const safeStorage = {
+  getItem: (k) => {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(k) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+  setItem: (k, v) => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(k, v);
+    } catch (e) {}
+  },
+  removeItem: (k) => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(k);
+    } catch (e) {}
+  }
+};
 
 // Fallback Mock Local Data
 const DEFAULT_SETTINGS = {
@@ -77,8 +109,8 @@ export const dataService = {
       }
     }
 
-    const storedAdminPin = localStorage.getItem('local_admin_pin') || '888888';
-    const storedGroupPwd = localStorage.getItem('local_group_password') || '123456';
+    const storedAdminPin = safeStorage.getItem('local_admin_pin') || '888888';
+    const storedGroupPwd = safeStorage.getItem('local_group_password') || '123456';
     if (password === storedAdminPin) return { verified: true, isAdmin: true };
     if (password === storedGroupPwd) return { verified: true, isAdmin: false };
     return { verified: false, isAdmin: false, message: 'Mật khẩu không đúng' };
@@ -106,7 +138,7 @@ export const dataService = {
       }
     }
 
-    const stored = localStorage.getItem('local_admin_pin') || '888888';
+    const stored = safeStorage.getItem('local_admin_pin') || '888888';
     return pin === stored;
   },
 
@@ -137,7 +169,7 @@ export const dataService = {
       }
     }
 
-    const local = localStorage.getItem('app_settings');
+    const local = safeStorage.getItem('app_settings');
     return local ? JSON.parse(local) : DEFAULT_SETTINGS;
   },
 
@@ -163,12 +195,12 @@ export const dataService = {
     }
 
     if (settings.admin_pin) {
-      localStorage.setItem('local_admin_pin', settings.admin_pin);
+      safeStorage.setItem('local_admin_pin', settings.admin_pin);
     }
     if (settings.group_password) {
-      localStorage.setItem('local_group_password', settings.group_password);
+      safeStorage.setItem('local_group_password', settings.group_password);
     }
-    localStorage.setItem('app_settings', JSON.stringify(settings));
+    safeStorage.setItem('app_settings', JSON.stringify(settings));
     return true;
   },
 
@@ -259,14 +291,14 @@ export const dataService = {
           .order('id', { ascending: true });
         
         if (!error && data && data.length > 0) {
-          localStorage.setItem('app_members', JSON.stringify(data));
+          safeStorage.setItem('app_members', JSON.stringify(data));
           return data;
         }
 
         // Nếu bảng members trống, tự động nạp 10 thành viên mẫu
         if (!error && data && data.length === 0) {
           await supabase.from('members').insert(DEFAULT_MEMBERS);
-          localStorage.setItem('app_members', JSON.stringify(DEFAULT_MEMBERS));
+          safeStorage.setItem('app_members', JSON.stringify(DEFAULT_MEMBERS));
           return DEFAULT_MEMBERS;
         }
       } catch (e) {
@@ -274,7 +306,7 @@ export const dataService = {
       }
     }
 
-    const local = localStorage.getItem('app_members');
+    const local = safeStorage.getItem('app_members');
     if (local) {
       try {
         const parsed = JSON.parse(local);
@@ -297,7 +329,7 @@ export const dataService = {
 
     // 1. Cập nhật bộ nhớ đệm Local Storage ngay lập tức để UI phản hồi tức thì
     try {
-      const localStr = localStorage.getItem('app_members');
+      const localStr = safeStorage.getItem('app_members');
       const currentList = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
       const updated = currentList.map((m) =>
         String(m.id) === String(id)
@@ -309,7 +341,7 @@ export const dataService = {
             }
           : m
       );
-      localStorage.setItem('app_members', JSON.stringify(updated));
+      safeStorage.setItem('app_members', JSON.stringify(updated));
     } catch (e) {
       console.warn('LocalStorage error in updateMember', e);
     }
@@ -378,11 +410,11 @@ export const dataService = {
     }
 
     try {
-      const localStr = localStorage.getItem('app_members');
+      const localStr = safeStorage.getItem('app_members');
       const members = localStr ? JSON.parse(localStr) : [...DEFAULT_MEMBERS];
       const newMember = { ...payload, id: Date.now() };
       members.push(newMember);
-      localStorage.setItem('app_members', JSON.stringify(members));
+      safeStorage.setItem('app_members', JSON.stringify(members));
       return newMember.id;
     } catch (e) {
       return Date.now();
@@ -406,10 +438,10 @@ export const dataService = {
     }
 
     try {
-      const localStr = localStorage.getItem('app_members');
+      const localStr = safeStorage.getItem('app_members');
       const members = localStr ? JSON.parse(localStr) : DEFAULT_MEMBERS;
       const updated = members.filter((m) => String(m.id) !== String(id));
-      localStorage.setItem('app_members', JSON.stringify(updated));
+      safeStorage.setItem('app_members', JSON.stringify(updated));
     } catch (e) {}
     return true;
   },
@@ -536,7 +568,7 @@ export const dataService = {
 
     // Local Storage fallback an toàn
     const storageKey = `contributions_${year}_${month}`;
-    const local = localStorage.getItem(storageKey);
+    const local = safeStorage.getItem(storageKey);
     if (local) {
       try {
         const parsed = JSON.parse(local);
@@ -573,7 +605,7 @@ export const dataService = {
       };
     });
 
-    localStorage.setItem(storageKey, JSON.stringify(initial));
+    safeStorage.setItem(storageKey, JSON.stringify(initial));
     return initial;
   },
 
@@ -781,7 +813,7 @@ export const dataService = {
       }
     }
 
-    const local = localStorage.getItem('app_transactions');
+    const local = safeStorage.getItem('app_transactions');
     let list = local ? JSON.parse(local) : [];
 
     return list.filter((t) => {
@@ -826,7 +858,7 @@ export const dataService = {
     const txs = await dataService.getTransactions({});
     const newTx = { ...tx, id: Date.now(), created_at: new Date().toISOString() };
     txs.unshift(newTx);
-    localStorage.setItem('app_transactions', JSON.stringify(txs));
+    safeStorage.setItem('app_transactions', JSON.stringify(txs));
     return newTx.id;
   },
 
@@ -853,7 +885,7 @@ export const dataService = {
 
     const txs = await dataService.getTransactions({});
     const updated = txs.map((t) => (t.id === id ? { ...t, ...tx } : t));
-    localStorage.setItem('app_transactions', JSON.stringify(updated));
+    safeStorage.setItem('app_transactions', JSON.stringify(updated));
     return true;
   },
 
@@ -876,7 +908,7 @@ export const dataService = {
 
     const txs = await dataService.getTransactions({});
     const updated = txs.filter((t) => t.id !== id);
-    localStorage.setItem('app_transactions', JSON.stringify(updated));
+    safeStorage.setItem('app_transactions', JSON.stringify(updated));
     return true;
   },
 };
