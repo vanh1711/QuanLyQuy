@@ -19,7 +19,9 @@ import {
   EyeOff,
   Copy,
   Users,
-  ShieldCheck
+  ShieldCheck,
+  Upload,
+  Trash2
 } from 'lucide-react';
 import { useFund } from '../context/FundContext';
 import { 
@@ -81,6 +83,63 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   }, [isOpen, settings]);
 
   if (!isOpen) return null;
+
+  // Nén ảnh QR siêu nhẹ (20-30KB) để lưu trữ tối ưu
+  const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 450;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = reject;
+        img.src = event.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFundQrUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Vui lòng chọn file hình ảnh (JPG, PNG, WebP)');
+      return;
+    }
+
+    try {
+      const compressedDataUrl = await compressImage(file);
+      setCustomQrUrl(compressedDataUrl);
+      setUseCustomQr(true);
+      setErrorMsg('');
+    } catch (err) {
+      setErrorMsg('Không thể đọc file ảnh, vui lòng thử lại');
+    }
+  };
 
   // Tính preview QR trực tiếp
   const previewAmount = parseFormattedNumber(monthlyAmount) || 40000;
@@ -338,27 +397,87 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Tùy chọn dán link ảnh QR riêng */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                {/* Tùy chọn Tải lên hoặc dán link ảnh QR riêng của Quỹ */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer">
+                    <label className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={useCustomQr}
                         onChange={(e) => setUseCustomQr(e.target.checked)}
                         className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4"
                       />
-                      <span>Sử dụng link ảnh QR riêng (Ví MoMo / ZaloPay / QR tĩnh)</span>
+                      <span>Tải ảnh mã QR riêng của Quỹ (MoMo, ZaloPay, QR ngân hàng)</span>
                     </label>
                   </div>
+
                   {useCustomQr && (
-                    <input
-                      type="url"
-                      value={customQrUrl}
-                      onChange={(e) => setCustomQrUrl(e.target.value)}
-                      placeholder="Dán link ảnh QR (https://...)"
-                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
+                    <div className="p-3.5 rounded-2xl bg-slate-100/70 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5 animate-fade-in">
+                      {customQrUrl ? (
+                        <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                          <img
+                            src={customQrUrl}
+                            alt="QR Quỹ"
+                            className="w-16 h-16 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-white p-1 shrink-0"
+                          />
+                          <div className="flex-1 space-y-1">
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" />
+                              Đã có ảnh QR riêng của Quỹ
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <label className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[11px] transition-colors inline-flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                <span>Đổi ảnh QR khác</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleFundQrUpload}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustomQrUrl('');
+                                  setUseCustomQr(false);
+                                }}
+                                className="px-2 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 font-bold text-[11px] transition-colors inline-flex items-center gap-1 border border-rose-200 dark:border-rose-800"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Xóa</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl hover:border-brand-500 bg-white dark:bg-slate-900 cursor-pointer transition-colors group">
+                            <Upload className="w-6 h-6 text-slate-400 group-hover:text-brand-500 group-hover:scale-110 transition-all mb-1" />
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-brand-600">
+                              Bấm vào đây để tải ảnh QR Quỹ từ máy
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Hỗ trợ ảnh JPG, PNG, ảnh chụp màn hình MoMo, ngân hàng...
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleFundQrUpload}
+                            />
+                          </label>
+
+                          <input
+                            type="url"
+                            value={customQrUrl}
+                            onChange={(e) => setCustomQrUrl(e.target.value)}
+                            placeholder="Hoặc dán đường link ảnh QR (https://...)"
+                            className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 

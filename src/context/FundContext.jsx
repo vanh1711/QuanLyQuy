@@ -107,6 +107,17 @@ export const FundProvider = ({ children }) => {
     fetchAllData(true);
   };
 
+  const addNewMember = async (memberData) => {
+    const id = await dataService.createMember(memberData);
+    fetchAllData(true);
+    return id;
+  };
+
+  const removeMember = async (id) => {
+    await dataService.deleteMember(id);
+    fetchAllData(true);
+  };
+
   const updateMemberBankInfo = async (id, memberData) => {
     await dataService.updateMember(id, memberData);
     fetchAllData(true);
@@ -142,6 +153,8 @@ export const FundProvider = ({ children }) => {
         toggleFullMonth,
         toggleMemberPaid,
         submitMemberPayment,
+        addNewMember,
+        removeMember,
         updateMemberBankInfo,
         addTransaction,
         editTransaction,

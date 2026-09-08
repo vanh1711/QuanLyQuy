@@ -19,7 +19,7 @@ import { useFund } from '../context/FundContext';
 import { VIETNAM_BANKS } from '../utils/formatters';
 
 export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false }) => {
-  const { updateMemberBankInfo } = useFund();
+  const { updateMemberBankInfo, addNewMember, removeMember } = useFund();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -28,6 +28,7 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
   const [bankAccountName, setBankAccountName] = useState('');
   const [qrUrl, setQrUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -50,6 +51,7 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
       }
       setSuccessMsg('');
       setErrorMsg('');
+      setIsDeleting(false);
     }
   }, [isOpen, member, isCreating]);
 
@@ -114,6 +116,27 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
     }
   };
 
+  const handleDeleteMember = async () => {
+    if (!memberId) return;
+    const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa thành viên "${name || 'này'}" khỏi danh sách quỹ?`);
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    setErrorMsg('');
+    try {
+      await removeMember(memberId);
+      setSuccessMsg('Đã xóa thành viên thành công!');
+      setTimeout(() => {
+        setSuccessMsg('');
+        onClose();
+      }, 700);
+    } catch (err) {
+      setErrorMsg('Không thể xóa thành viên, vui lòng thử lại');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -125,7 +148,7 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
     setErrorMsg('');
 
     try {
-      await updateMemberBankInfo(memberId, {
+      const payload = {
         name: name.trim(),
         phone: phone.trim(),
         bank_id: bankId,
@@ -133,9 +156,16 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
         bank_account_name: bankAccountName.trim().toUpperCase() || name.trim().toUpperCase(),
         qr_url: qrUrl,
         avatar_url: qrUrl,
-      });
+      };
 
-      setSuccessMsg('Đã cập nhật thông tin thành viên thành công!');
+      if (isCreating) {
+        await addNewMember(payload);
+        setSuccessMsg('Đã thêm thành viên mới thành công!');
+      } else {
+        await updateMemberBankInfo(memberId, payload);
+        setSuccessMsg('Đã cập nhật thông tin thành viên thành công!');
+      }
+
       setTimeout(() => {
         setSuccessMsg('');
         onClose();
@@ -358,6 +388,19 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
 
           {/* Action Buttons */}
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2.5 shrink-0">
+            {!isCreating && memberId && (
+              <button
+                type="button"
+                onClick={handleDeleteMember}
+                disabled={isDeleting || isSaving}
+                className="px-3 py-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors flex items-center justify-center gap-1"
+                title="Xóa thành viên này khỏi quỹ"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Xóa</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -365,13 +408,14 @@ export const MemberEditModal = ({ isOpen, onClose, member, isCreating = false })
             >
               Hủy
             </button>
+
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || isDeleting}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold shadow-md shadow-brand-500/25 transition-all disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Đang lưu...' : 'Lưu Thành Viên'}</span>
+              <span>{isSaving ? 'Đang lưu...' : isCreating ? 'Thêm Mới' : 'Lưu Thay Đổi'}</span>
             </button>
           </div>
 

@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Zap,
   Edit3,
-  UserPlus
+  UserPlus,
+  QrCode
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
@@ -23,11 +24,12 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
   const { isAdmin } = useAuth();
   const { contributions, toggleWeek, toggleFullMonth, currentMonth, currentYear } = useFund();
 
-  // Modal Sửa thành viên
+  // Modal Sửa / Thêm thành viên
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isCreatingMember, setIsCreatingMember] = useState(false);
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState(null);
 
-  // Tính toán tổng số tuần đã nộp của toàn bộ nhóm (10 người x 4 tuần = 40 lượt tuần)
+  // Tính toán tổng số tuần đã nộp của toàn bộ nhóm
   let totalWeeks = 0;
   let totalPaidWeeks = 0;
   let totalCollectedMoney = 0;
@@ -67,7 +69,14 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
   };
 
   const handleOpenEditMember = (c) => {
+    setIsCreatingMember(false);
     setSelectedMemberForEdit(c);
+    setIsEditModalOpen(true);
+  };
+
+  const handleOpenCreateMember = () => {
+    setIsCreatingMember(true);
+    setSelectedMemberForEdit(null);
     setIsEditModalOpen(true);
   };
 
@@ -99,57 +108,67 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 pl-11">
-            {isAdmin ? (
-              <span className="text-brand-600 dark:text-brand-400 font-semibold">
-                💡 Quyền Thủ quỹ: Bấm vào <strong>"Sửa Tên & STK"</strong> để đổi tên thành viên thật hoặc bấm từng Tuần (T1-T4) để tích nộp.
-              </span>
-            ) : (
-              <span>Thành viên nộp theo tuần (10k) hoặc nộp theo tháng (40k) đều được hệ thống tự động ghi nhận</span>
-            )}
+            <span>
+              💡 Thành viên & Thủ quỹ có thể bấm <strong>"Sửa & Up QR"</strong> trên mỗi thẻ để tự cập nhật tên, STK và ảnh QR nhận tiền hoàn của mình.
+            </span>
           </p>
         </div>
 
-        {/* Thống kê tiến độ tháng */}
-        <div className="w-full lg:w-80 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Tiến độ thu tháng {currentMonth}:
-            </span>
-            <span className="font-bold text-brand-600 dark:text-brand-400">
-              {totalPaidWeeks}/40 tuần ({completionRate}%)
-            </span>
-          </div>
+        {/* Nút Thêm Thành Viên & Thống kê tiến độ tháng */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
           
-          <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all duration-500 rounded-full"
-              style={{ width: `${completionRate}%` }}
-            />
+          <button
+            type="button"
+            onClick={handleOpenCreateMember}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 transition-all active:scale-95 shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>+ Thêm Thành Viên</span>
+          </button>
+
+          {/* Thống kê tiến độ tháng */}
+          <div className="w-full lg:w-72 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Tiến độ thu tháng {currentMonth}:
+              </span>
+              <span className="font-bold text-brand-600 dark:text-brand-400">
+                {totalPaidWeeks}/{totalWeeks || 40} tuần ({completionRate}%)
+              </span>
+            </div>
+            
+            <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all duration-500 rounded-full"
+                style={{ width: `${completionRate}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
+              <span>Đã thu: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatVND(totalCollectedMoney)}</strong></span>
+              <span>Mục tiêu: <strong>{formatVND((totalWeeks || 40) * 10000)}</strong></span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
-            <span>Đã thu: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatVND(totalCollectedMoney)}</strong></span>
-            <span>Mục tiêu: <strong>{formatVND(400000)}</strong></span>
-          </div>
         </div>
       </div>
 
-      {/* Bảng Danh Sách 10 Thành Viên x 4 Tuần */}
+      {/* Bảng Danh Sách Thành Viên x 4 Tuần */}
       {contributions.length === 0 ? (
         <div className="text-center py-12 px-4 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
           <Users className="w-10 h-10 text-slate-400 mx-auto animate-bounce" />
           <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">
-            Đang tải hoặc chưa có danh sách thành viên
+            Chưa có thành viên nào trong danh sách
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-            Hệ thống đang đồng bộ dữ liệu với máy chủ. Nếu chưa hiện, bạn hãy bấm tải lại nhé!
+            Bấm vào nút "Thêm Thành Viên" ở trên để bắt đầu thêm người vào quỹ nhóm nhé!
           </p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleOpenCreateMember}
             className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-md shadow-brand-500/20 transition-all"
           >
-            🔄 Tải lại trang
+            + Thêm Thành Viên Ngay
           </button>
         </div>
       ) : (
@@ -179,12 +198,9 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
                   
                   {/* Avatar & Name */}
                   <div 
-                    onClick={() => {
-                      if (isAdmin) handleOpenEditMember(c);
-                      else onOpenMemberQrModal(c);
-                    }}
+                    onClick={() => handleOpenEditMember(c)}
                     className="flex items-center gap-3 cursor-pointer group"
-                    title={isAdmin ? "Nhấp để sửa tên, STK & ảnh QR thành viên" : "Nhấp để mở mã QR chuyển tiền lại cho thành viên"}
+                    title="Nhấp để sửa tên, STK, xóa thành viên hoặc tải ảnh mã QR"
                   >
                     <div
                       className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform ${
@@ -203,10 +219,10 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors flex items-center gap-1.5">
                           <span>{c.member_name}</span>
                           <span className="text-[10px] font-normal text-slate-400">({c.member_bank_id || 'MB'})</span>
-                          {isAdmin && <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-brand-600 inline" />}
+                          <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-brand-600 inline" />
                         </h4>
                         {hasCustomQr && (
-                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[9px] font-extrabold border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" title="Thủ quỹ đã tải lên ảnh QR riêng cho thành viên này">
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[9px] font-extrabold border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" title="Thành viên đã có ảnh mã QR riêng">
                             <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
                             Đã có QR
                           </span>
@@ -291,36 +307,34 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
                 {/* Bottom: Action Buttons */}
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                   
-                  {/* Nút Sửa Tên & STK Thành viên (Dành cho Thủ Quỹ) */}
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleOpenEditMember(c)}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors shadow-2xs"
-                      title="Thủ quỹ sửa tên, STK và upload mã QR thành viên"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Sửa & Up QR</span>
-                    </button>
-                  )}
+                  {/* Nút Sửa Tên, STK & Up QR Thành viên (Dành cho Cả Thành Viên & Thủ Quỹ) */}
+                  <button
+                    onClick={() => handleOpenEditMember(c)}
+                    className="flex-1 flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors shadow-2xs"
+                    title="Sửa tên, STK, xóa thành viên hoặc upload ảnh mã QR riêng"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Sửa & Up QR</span>
+                  </button>
 
-                  {/* Nút xem QR cá nhân thành viên */}
+                  {/* Nút xem QR cá nhân thành viên để hoàn tiền */}
                   <button
                     onClick={() => onOpenMemberQrModal(c)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors ${
                       hasCustomQr
                         ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
                         : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>QR Hoàn tiền</span>
+                    <QrCode className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>{hasCustomQr ? 'Xem QR Riêng' : 'QR Hoàn Tiền'}</span>
                   </button>
 
                   {/* Nút Đóng cả tháng (Dành cho Thủ quỹ 1-click) */}
                   {isAdmin && (
                     <button
                       onClick={() => handleToggleFullMonth(c)}
-                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
+                      className={`flex-1 flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
                         isFullyPaid
                           ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 hover:bg-rose-100'
                           : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/30'
@@ -339,11 +353,12 @@ export const MemberTracker = ({ onOpenMemberQrModal }) => {
         </div>
       )}
 
-      {/* Modal Sửa Thông Tin Thành Viên */}
+      {/* Modal Sửa / Thêm Thông Tin Thành Viên */}
       <MemberEditModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         member={selectedMemberForEdit}
+        isCreating={isCreatingMember}
       />
 
     </div>

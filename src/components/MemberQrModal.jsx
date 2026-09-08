@@ -13,8 +13,8 @@ import {
   ArrowLeftRight,
   DollarSign,
   Sparkles,
-  Info,
-  ExternalLink
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useFund } from '../context/FundContext';
@@ -27,10 +27,9 @@ import {
 } from '../utils/formatters';
 
 export const MemberQrModal = ({ isOpen, onClose, member }) => {
-  const { isAdmin } = useAuth();
   const { updateMemberBankInfo } = useFund();
 
-  // All Hooks must be at the very top
+  // All Hooks must be at the very top unconditionally
   const [refundAmount, setRefundAmount] = useState('50.000');
   const [transferReason, setTransferReason] = useState('Hoan tien quy');
   const [copiedField, setCopiedField] = useState(null);
@@ -40,8 +39,48 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
   const [bankId, setBankId] = useState('MBBank');
   const [accountNo, setAccountNo] = useState('');
   const [accountName, setAccountName] = useState('');
-  const [activeQrTab, setActiveQrTab] = useState('vietqr');
+  const [memberQrImage, setMemberQrImage] = useState('');
+  const [activeQrTab, setActiveQrTab] = useState('custom');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Nén ảnh siêu nhẹ (khoảng 20-30KB) để lưu tức thì
+  const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = reject;
+        img.src = event.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
 
   // Sync state whenever member changes or modal opens
   useEffect(() => {
@@ -54,9 +93,11 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
       setBankId(bId);
       setAccountNo(aNo);
       setAccountName(aName);
+      setMemberQrImage(customImg);
       setActiveQrTab(customImg ? 'custom' : 'vietqr');
       setIsEditingBank(false);
       setSaveSuccess(false);
+      setErrorMsg('');
     }
   }, [isOpen, member]);
 
@@ -64,7 +105,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
   if (!isOpen || !member) return null;
 
   const memberDisplayName = member.member_name || member.name || 'Thành viên';
-  const customQrImage = member.member_qr_url || member.qr_url || member.avatar_url || '';
+  const memberId = member.member_id || member.id;
 
   const currentBankId = bankId || 'MBBank';
   const currentAccountNo = accountNo || '';
@@ -83,7 +124,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
     template: 'compact2',
   });
 
-  const displayQrUrl = activeQrTab === 'custom' && customQrImage ? customQrImage : vietQrUrl;
+  const displayQrUrl = (activeQrTab === 'custom' && memberQrImage) ? memberQrImage : vietQrUrl;
 
   const handleCopy = (text, field) => {
     if (!text) return;
@@ -94,6 +135,15 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
 
   const handleDownloadQR = async () => {
     try {
+      if (displayQrUrl.startsWith('data:')) {
+        const link = document.createElement('a');
+        link.href = displayQrUrl;
+        link.download = `QR_ChuyenTien_${memberDisplayName}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
       const response = await fetch(displayQrUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -108,15 +158,48 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
     }
   };
 
+  const handleMemberQrUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Vui lòng chọn file hình ảnh (JPG, PNG, WebP)');
+      return;
+    }
+
+    try {
+      const compressedDataUrl = await compressImage(file);
+      setMemberQrImage(compressedDataUrl);
+      setActiveQrTab('custom');
+      setErrorMsg('');
+
+      // Tự động lưu ảnh QR lên database
+      await updateMemberBankInfo(memberId, {
+        name: memberDisplayName,
+        bank_id: currentBankId,
+        bank_account_no: currentAccountNo,
+        bank_account_name: currentAccountName,
+        phone: member.member_phone || member.phone || '',
+        qr_url: compressedDataUrl,
+        avatar_url: compressedDataUrl,
+      });
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      setErrorMsg('Không thể nén ảnh, vui lòng thử lại');
+    }
+  };
+
   const handleSaveBankInfo = async () => {
-    await updateMemberBankInfo(member.member_id || member.id, {
+    await updateMemberBankInfo(memberId, {
       name: memberDisplayName,
       bank_id: currentBankId,
       bank_account_no: currentAccountNo,
       bank_account_name: currentAccountName,
       phone: member.member_phone || member.phone || '',
-      qr_url: customQrImage,
-      avatar_url: customQrImage,
+      qr_url: memberQrImage,
+      avatar_url: memberQrImage,
     });
     setIsEditingBank(false);
     setSaveSuccess(true);
@@ -124,21 +207,21 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
       <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-slide-up my-6 max-h-[92vh] flex flex-col">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/30">
-              <ArrowLeftRight className="w-5 h-5" />
+              <QrCode className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Mã QR Chuyển Tiền: {memberDisplayName}
+                Mã QR Nhận Tiền: {memberDisplayName}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Thông tin số tài khoản & mã QR nhận tiền của thành viên
+                Quét mã để chuyển tiền hoặc hoàn quỹ cho {memberDisplayName}
               </p>
             </div>
           </div>
@@ -154,8 +237,20 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs flex-1">
           
-          {/* Tabs nếu thành viên có ảnh QR thủ quỹ đã tải lên */}
-          {customQrImage && (
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-800 font-bold">
+              {errorMsg}
+            </div>
+          )}
+
+          {saveSuccess && (
+            <div className="p-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 rounded-xl border border-emerald-200 dark:border-emerald-800 text-center font-bold animate-fade-in">
+              ✅ Đã cập nhật ảnh mã QR & thông tin thành công!
+            </div>
+          )}
+
+          {/* Tabs chuyển đổi nếu có ảnh QR riêng */}
+          {memberQrImage && (
             <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
               <button
                 type="button"
@@ -167,7 +262,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Ảnh QR Riêng (Thủ quỹ up)</span>
+                <span>Ảnh QR Riêng Của Thành Viên</span>
               </button>
               <button
                 type="button"
@@ -179,87 +274,121 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
                 }`}
               >
                 <QrCode className="w-3.5 h-3.5 text-brand-500" />
-                <span>VietQR Tự Động</span>
+                <span>VietQR Tự Điền Tiền</span>
               </button>
             </div>
           )}
 
           {/* QR Image & Controls */}
-          <div className="flex flex-col sm:flex-row items-center gap-5 p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-            <div className="bg-white p-2 rounded-2xl shadow-md border border-slate-200 shrink-0 flex items-center justify-center">
-              <img
-                src={displayQrUrl}
-                alt={`QR ${memberDisplayName}`}
-                className="w-40 sm:w-44 h-auto max-h-56 rounded-xl object-contain"
-                onError={(e) => {
-                  e.target.src = vietQrUrl;
-                }}
-              />
-            </div>
+          {memberQrImage || (activeQrTab === 'vietqr' && currentAccountNo) ? (
+            <div className="flex flex-col sm:flex-row items-center gap-5 p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              <div className="bg-white p-2 rounded-2xl shadow-md border border-slate-200 shrink-0 flex items-center justify-center">
+                <img
+                  src={displayQrUrl}
+                  alt={`QR ${memberDisplayName}`}
+                  className="w-40 sm:w-44 h-auto max-h-56 rounded-xl object-contain"
+                  onError={(e) => {
+                    e.target.src = vietQrUrl;
+                  }}
+                />
+              </div>
 
-            <div className="flex-1 space-y-3 w-full">
-              {activeQrTab === 'vietqr' || !customQrImage ? (
-                <>
-                  {/* Số tiền cần chuyển lại */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>Số tiền muốn chuyển lại</span>
-                    </label>
-                    <div className="relative">
+              <div className="flex-1 space-y-3 w-full">
+                {activeQrTab === 'vietqr' ? (
+                  <>
+                    {/* Số tiền cần chuyển lại */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Số tiền muốn chuyển</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={refundAmount}
+                          onChange={(e) => setRefundAmount(formatNumberInput(e.target.value))}
+                          className="w-full px-3 py-2 text-xs font-extrabold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                          placeholder="50.000"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[10px] text-slate-400">
+                          VNĐ
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Lý do chuyển tiền */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-700 dark:text-slate-300">
+                        Lý do chuyển / Nội dung
+                      </label>
                       <input
                         type="text"
-                        value={refundAmount}
-                        onChange={(e) => setRefundAmount(formatNumberInput(e.target.value))}
-                        className="w-full px-3 py-2 text-xs font-extrabold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
-                        placeholder="50.000"
+                        value={transferReason}
+                        onChange={(e) => setTransferReason(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                        placeholder="Hoan tien mua do, chia quy..."
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[10px] text-slate-400">
-                        VNĐ
-                      </span>
                     </div>
+                  </>
+                ) : (
+                  <div className="space-y-2 p-3 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                      <Check className="w-4 h-4 text-emerald-500" />
+                      Mã QR Nhận Tiền Chính Thức
+                    </span>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                      Đây là ảnh mã QR riêng của {memberDisplayName}. Mở App ngân hàng hoặc ví điện tử bất kỳ để quét mã chuyển tiền.
+                    </p>
                   </div>
+                )}
 
-                  {/* Lý do chuyển tiền */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-700 dark:text-slate-300">
-                      Lý do chuyển / Nội dung
-                    </label>
+                {/* Tải QR & Đổi ảnh */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleDownloadQR}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Tải ảnh QR</span>
+                  </button>
+                  <label className="cursor-pointer py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors inline-flex items-center gap-1">
+                    <Upload className="w-3.5 h-3.5 text-brand-500" />
+                    <span>Đổi ảnh</span>
                     <input
-                      type="text"
-                      value={transferReason}
-                      onChange={(e) => setTransferReason(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
-                      placeholder="Hoan tien mua do, chia quy..."
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleMemberQrUpload}
                     />
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-2 p-3 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-emerald-500" />
-                    Đang hiển thị mã QR gốc của thành viên
-                  </span>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                    Mã QR này do Thủ Quỹ tải lên trực tiếp. Bạn có thể mở ứng dụng ngân hàng quét trực tiếp mã này để chuyển tiền.
-                  </p>
+                  </label>
                 </div>
-              )}
-
-              {/* Tải QR */}
-              <button
-                onClick={handleDownloadQR}
-                className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Tải ảnh QR này về máy</span>
-              </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Khung kêu gọi tải ảnh QR khi chưa có */
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto shadow-xs">
+                <QrCode className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {memberDisplayName} chưa tải ảnh mã QR lên
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto mt-1">
+                  Tải ảnh mã QR ngân hàng hoặc ví MoMo/ZaloPay của bạn lên để nhận tiền hoàn quỹ nhanh chóng.
+                </p>
+              </div>
 
-          {saveSuccess && (
-            <div className="p-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 rounded-xl border border-emerald-200 dark:border-emerald-800 text-center font-bold">
-              ✅ Đã cập nhật thông tin tài khoản thành công!
+              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md shadow-brand-500/20 transition-all">
+                <Upload className="w-4 h-4" />
+                <span>Bấm vào đây để tải ảnh QR lên</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleMemberQrUpload}
+                />
+              </label>
             </div>
           )}
 
@@ -268,7 +397,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <CreditCard className="w-4 h-4 text-emerald-500" />
-                Thông tin tài khoản nhận tiền
+                Thông tin số tài khoản
               </span>
               <button
                 onClick={() => {
@@ -283,7 +412,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
                 {isEditingBank ? (
                   <>
                     <Save className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="text-emerald-600 font-bold">Lưu STK này</span>
+                    <span className="text-emerald-600 font-bold">Lưu STK</span>
                   </>
                 ) : (
                   <>
@@ -339,7 +468,7 @@ export const MemberQrModal = ({ isOpen, onClose, member }) => {
                   className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Lưu & Cập Nhật Mã QR</span>
+                  <span>Lưu Thông Tin STK</span>
                 </button>
               </div>
             ) : (
