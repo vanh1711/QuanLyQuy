@@ -15,7 +15,10 @@ import {
   Calendar,
   Zap,
   Edit3,
-  Settings
+  Settings,
+  ZoomIn,
+  Maximize2,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
@@ -57,6 +60,7 @@ export const QuickPaySection = () => {
   const [copiedField, setCopiedField] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
 
   const selectedMember = members.find((m) => m.id === Number(selectedMemberId)) || members[0];
   const memberName = selectedMember?.name || 'Thành viên';
@@ -167,7 +171,7 @@ export const QuickPaySection = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* CỘT TRÁI: FORM ĐIỀN THÔNG TIN & GHI CHÚ */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-5">
+        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-sm space-y-5">
           
           <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between">
             <div>
@@ -182,7 +186,7 @@ export const QuickPaySection = () => {
             {/* Nút thay đổi QR Thủ Quỹ */}
             <button
               onClick={handleOpenQrSettings}
-              className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:hover:bg-brand-900 dark:text-brand-300 border border-brand-200/80 dark:border-brand-800 transition-colors shadow-2xs"
+              className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:hover:bg-brand-900 dark:text-brand-300 border border-brand-200/80 dark:border-brand-800 transition-colors shadow-2xs cursor-pointer"
               title="Thủ quỹ thay đổi STK & mã QR nhận tiền"
             >
               <Settings className="w-3.5 h-3.5" />
@@ -303,7 +307,7 @@ export const QuickPaySection = () => {
                 </span>
                 <button
                   onClick={() => handleCopy(settings.bank_account_no || '0988888888', 'acc')}
-                  className="p-1 rounded-md bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:text-brand-600"
+                  className="p-1 rounded-md bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:text-brand-600 cursor-pointer"
                   title="Sao chép STK"
                 >
                   {copiedField === 'acc' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
@@ -329,7 +333,7 @@ export const QuickPaySection = () => {
                 </span>
                 <button
                   onClick={() => handleCopy(transferContent, 'content')}
-                  className="p-1 rounded-md bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:text-brand-600"
+                  className="p-1 rounded-md bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:text-brand-600 cursor-pointer"
                   title="Sao chép nội dung"
                 >
                   {copiedField === 'content' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
@@ -342,7 +346,7 @@ export const QuickPaySection = () => {
               <button
                 type="button"
                 onClick={handleOpenQrSettings}
-                className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold hover:underline flex items-center gap-1"
+                className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <Edit3 className="w-3 h-3" />
                 <span>Thủ quỹ đổi STK/QR nhận tiền</span>
@@ -361,7 +365,7 @@ export const QuickPaySection = () => {
               <button
                 onClick={handleConfirmSent}
                 disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.99] disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
                 <span>{isSubmitting ? 'Đang gửi thông báo...' : '✅ Tôi Đã Chuyển Tiền & Gửi Ghi Chú Này Lên Web'}</span>
@@ -382,7 +386,7 @@ export const QuickPaySection = () => {
 
               <button
                 onClick={handleOpenQrSettings}
-                className="text-[11px] text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-white flex items-center gap-1 font-semibold"
+                className="text-[11px] text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-white flex items-center gap-1 font-semibold cursor-pointer"
                 title="Đổi mã QR"
               >
                 <Edit3 className="w-3 h-3" />
@@ -401,31 +405,147 @@ export const QuickPaySection = () => {
             </p>
           </div>
 
-          {/* Ảnh VietQR */}
-          <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200 max-w-[260px]">
+          {/* Ảnh VietQR (Nhấp vào để phóng to) */}
+          <div 
+            onClick={() => setIsZoomOpen(true)}
+            className="p-3 bg-white rounded-2xl shadow-md border border-slate-200 max-w-[260px] relative group cursor-zoom-in transition-all duration-200 hover:scale-[1.03] hover:shadow-xl"
+            title="Nhấp vào để phóng to mã QR"
+          >
             <img
               src={qrUrl}
               alt="VietQR nộp quỹ"
               className="w-full h-auto rounded-xl object-contain"
             />
+            
+            {/* Overlay gợi ý phóng to khi hover */}
+            <div className="absolute inset-0 rounded-2xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white font-bold text-xs backdrop-blur-[2px]">
+              <ZoomIn className="w-4 h-4" />
+              <span>Phóng to QR</span>
+            </div>
           </div>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs leading-relaxed">
-            Mở App ngân hàng bất kỳ để quét mã. Tự động nhận diện số tiền và ghi chú chuẩn xác.
+            Mở App ngân hàng bất kỳ để quét mã. Nhấp vào ảnh để xem to rõ hơn.
           </p>
 
-          {/* Nút tải ảnh QR */}
-          <button
-            onClick={handleDownloadQR}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>Tải Ảnh Mã QR Về Máy</span>
-          </button>
+          {/* Các nút hành động: Phóng to & Tải ảnh */}
+          <div className="w-full flex items-center gap-2">
+            <button
+              onClick={() => setIsZoomOpen(true)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/50 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 font-bold text-xs border border-brand-200 dark:border-brand-800 transition-colors cursor-pointer"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-brand-600" />
+              <span>Phóng To QR</span>
+            </button>
+
+            <button
+              onClick={handleDownloadQR}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Tải Ảnh QR</span>
+            </button>
+          </div>
 
         </div>
 
       </div>
+
+      {/* MODAL PHÓNG TO MÃ QR (LIGHTBOX) */}
+      {isZoomOpen && (
+        <div 
+          onClick={() => setIsZoomOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col items-center text-center space-y-4 animate-slide-up"
+          >
+            {/* Nút đóng */}
+            <button
+              onClick={() => setIsZoomOpen(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Đóng (ESC)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Tiêu đề Modal */}
+            <div className="space-y-1 pr-6">
+              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 font-bold text-xs border border-emerald-200 dark:border-emerald-800">
+                VietQR Quét Tự Điền Tiền
+              </span>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white pt-1">
+                Đóng quỹ cho: <span className="text-brand-600 dark:text-brand-400">{memberName}</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Số tiền: <strong className="text-emerald-600 dark:text-emerald-400 text-sm font-extrabold">{formatVND(amountNumber)}</strong>
+              </p>
+            </div>
+
+            {/* Ảnh QR phóng to cực nét */}
+            <div className="p-4 bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-[320px] flex items-center justify-center">
+              <img
+                src={qrUrl}
+                alt="VietQR nộp quỹ phóng to"
+                className="w-full h-auto rounded-xl object-contain"
+              />
+            </div>
+
+            {/* Thông tin tài khoản tóm tắt */}
+            <div className="w-full p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700 text-xs space-y-1.5 text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Ngân hàng:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{settings.bank_id || 'MBBank'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">STK:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{settings.bank_account_no || '0988888888'}</span>
+                  <button
+                    onClick={() => handleCopy(settings.bank_account_no || '0988888888', 'acc_zoom')}
+                    className="p-0.5 rounded text-slate-500 hover:text-brand-600 cursor-pointer"
+                    title="Copy STK"
+                  >
+                    {copiedField === 'acc_zoom' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Cú pháp:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-brand-600 dark:text-brand-400 truncate max-w-[180px]">{transferContent}</span>
+                  <button
+                    onClick={() => handleCopy(transferContent, 'content_zoom')}
+                    className="p-0.5 rounded text-slate-500 hover:text-brand-600 cursor-pointer"
+                    title="Copy cú pháp"
+                  >
+                    {copiedField === 'content_zoom' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Nút hành động */}
+            <div className="w-full flex items-center gap-2 pt-1">
+              <button
+                onClick={handleDownloadQR}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Tải Ảnh QR Về Máy</span>
+              </button>
+              <button
+                onClick={() => setIsZoomOpen(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
