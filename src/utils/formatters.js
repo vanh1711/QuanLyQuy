@@ -102,11 +102,91 @@ export const generateVietQRUrl = ({
 };
 
 /**
+ * Lấy thông tin chi tiết 4 tuần chuẩn của một tháng (Gộp các ngày cuối tháng vào Tuần 4 để chuẩn 4 tuần/tháng)
+ */
+export const getMonthWeeksInfo = (month, year) => {
+  const m = Number(month) || (new Date().getMonth() + 1);
+  const y = Number(year) || new Date().getFullYear();
+  const lastDay = new Date(y, m, 0).getDate(); // 28, 29, 30 hoặc 31
+  const pad = (n) => String(n).padStart(2, '0');
+  const mStr = pad(m);
+
+  return [
+    {
+      week: 1,
+      label: 'Tuần 1',
+      startDate: 1,
+      endDate: 7,
+      dateRange: `01/${mStr} - 07/${mStr}`,
+      shortRange: `01 - 07/${mStr}`,
+      desc: 'Ngày 01 đến 07',
+    },
+    {
+      week: 2,
+      label: 'Tuần 2',
+      startDate: 8,
+      endDate: 14,
+      dateRange: `08/${mStr} - 14/${mStr}`,
+      shortRange: `08 - 14/${mStr}`,
+      desc: 'Ngày 08 đến 14',
+    },
+    {
+      week: 3,
+      label: 'Tuần 3',
+      startDate: 15,
+      endDate: 21,
+      dateRange: `15/${mStr} - 21/${mStr}`,
+      shortRange: `15 - 21/${mStr}`,
+      desc: 'Ngày 15 đến 21',
+    },
+    {
+      week: 4,
+      label: 'Tuần 4',
+      startDate: 22,
+      endDate: lastDay,
+      dateRange: `22/${mStr} - ${lastDay}/${mStr}`,
+      shortRange: `22 - ${lastDay}/${mStr}`,
+      desc: `Ngày 22 đến ${lastDay} (hết tháng)`,
+    },
+  ];
+};
+
+/**
+ * Xác định hôm nay thuộc tuần thứ mấy trong tháng
+ */
+export const getCurrentWeekInfo = (month, year) => {
+  const now = new Date();
+  const nowM = now.getMonth() + 1;
+  const nowY = now.getFullYear();
+  const isCurrentMonth = Number(month) === nowM && Number(year) === nowY;
+
+  const day = now.getDate();
+  let currentWeek = 1;
+  if (day >= 1 && day <= 7) currentWeek = 1;
+  else if (day >= 8 && day <= 14) currentWeek = 2;
+  else if (day >= 15 && day <= 21) currentWeek = 3;
+  else currentWeek = 4; // Từ ngày 22 đến hết tháng (ngày 28, 29, 30 hoặc 31)
+
+  const weeksInfo = getMonthWeeksInfo(month, year);
+  const thisWeekObj = weeksInfo.find((w) => w.week === currentWeek) || weeksInfo[0];
+
+  return {
+    isCurrentMonth,
+    currentWeek: isCurrentMonth ? currentWeek : null,
+    currentWeekObj: isCurrentMonth ? thisWeekObj : null,
+    todayFormatted: formatDate(now.toISOString()),
+    todayDay: day,
+    weeksInfo,
+  };
+};
+
+/**
  * Xuất dữ liệu quỹ thời gian thực ra file Excel (.xlsx) với 3 Sheet chuyên nghiệp
  */
-export const exportTransactionsToExcel = (transactions, summaryInfo = {}, contributions = []) => {
+export const exportTransactionsToExcel = (transactions, summaryInfo = {}, contributions = [], month, year) => {
   const workbook = XLSX.utils.book_new();
   const nowStr = new Date().toLocaleString('vi-VN', { hour12: false });
+  const weeksInfo = getMonthWeeksInfo(month || new Date().getMonth() + 1, year || new Date().getFullYear());
 
   // ===================== SHEET 1: MA TRẬN ĐÓNG QUỸ THEO TUẦN =====================
   if (contributions && contributions.length > 0) {
@@ -125,10 +205,10 @@ export const exportTransactionsToExcel = (transactions, summaryInfo = {}, contri
         'Họ & Tên': c.member_name,
         'Ngân Hàng': c.member_bank_id || 'MBBank',
         'Số Tài Khoản': c.member_bank_account_no || '0912345678',
-        'Tuần 1 (10k)': w1?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
-        'Tuần 2 (10k)': w2?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
-        'Tuần 3 (10k)': w3?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
-        'Tuần 4 (10k)': w4?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
+        [`Tuần 1 (${weeksInfo[0].dateRange})`]: w1?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
+        [`Tuần 2 (${weeksInfo[1].dateRange})`]: w2?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
+        [`Tuần 3 (${weeksInfo[2].dateRange})`]: w3?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
+        [`Tuần 4 (${weeksInfo[3].dateRange})`]: w4?.is_paid === 1 ? 'Đã nộp (10.000đ)' : 'Chưa nộp',
         'Tổng Đã Nộp (VNĐ)': totalPaid,
         'Còn Thiếu (VNĐ)': debt,
         'Trạng Thái Tháng': c.is_month_fully_paid ? 'Đã nộp đủ cả tháng' : `Đã nộp ${c.paid_weeks_count || 0}/4 tuần`,
@@ -142,10 +222,10 @@ export const exportTransactionsToExcel = (transactions, summaryInfo = {}, contri
       { wch: 22 }, // Tên
       { wch: 15 }, // Ngân hàng
       { wch: 16 }, // STK
-      { wch: 18 }, // T1
-      { wch: 18 }, // T2
-      { wch: 18 }, // T3
-      { wch: 18 }, // T4
+      { wch: 22 }, // T1
+      { wch: 22 }, // T2
+      { wch: 22 }, // T3
+      { wch: 22 }, // T4
       { wch: 18 }, // Đã nộp
       { wch: 16 }, // Còn thiếu
       { wch: 22 }, // Trạng thái

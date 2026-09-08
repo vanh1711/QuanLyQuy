@@ -20,17 +20,30 @@ import {
 import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
 import { useFund } from '../context/FundContext';
-import { generateVietQRUrl, formatVND, formatNumberInput, parseFormattedNumber } from '../utils/formatters';
+import { 
+  generateVietQRUrl, 
+  formatVND, 
+  formatNumberInput, 
+  parseFormattedNumber,
+  getCurrentWeekInfo 
+} from '../utils/formatters';
 
 export const QuickPaySection = () => {
   const { isAdmin, openPinModal } = useAuth();
   const { settings, members, currentMonth, currentYear, submitMemberPayment, openSettingsModal } = useFund();
 
+  const weekStatus = getCurrentWeekInfo(currentMonth, currentYear);
+  const currentWeekObj = weekStatus.currentWeekObj;
+
   const weeklyAmount = Number(settings.weekly_amount) || 10000;
   const monthlyAmount = Number(settings.monthly_amount) || weeklyAmount * 4;
 
   const paymentPresets = [
-    { label: `1 Tuần (${formatVND(weeklyAmount)})`, amount: weeklyAmount, desc: '1 tuần' },
+    { 
+      label: `1 Tuần (${formatVND(weeklyAmount)})`, 
+      amount: weeklyAmount, 
+      desc: currentWeekObj ? `1 tuần (${currentWeekObj.label}: ${currentWeekObj.shortRange})` : '1 tuần' 
+    },
     { label: `2 Tuần (${formatVND(weeklyAmount * 2)})`, amount: weeklyAmount * 2, desc: '2 tuần' },
     { label: `⚡ Cả Tháng (${formatVND(monthlyAmount)} - 4 tuần)`, amount: monthlyAmount, desc: 'cả tháng (4 tuần)', isPopular: true },
     { label: `2 Tháng (${formatVND(monthlyAmount * 2)})`, amount: monthlyAmount * 2, desc: '2 tháng (8 tuần)' },
@@ -50,9 +63,15 @@ export const QuickPaySection = () => {
   const amountNumber = parseFormattedNumber(customAmount) || monthlyAmount;
 
   // Cú pháp chuyển khoản tự động
+  const weekNoteSnippet = amountNumber === weeklyAmount && currentWeekObj
+    ? `T${currentWeekObj.week}`
+    : amountNumber >= monthlyAmount
+    ? '4 tuan'
+    : formatVND(amountNumber);
+
   const transferContent = note.trim()
     ? `${memberName} nop quy T${currentMonth}: ${note.trim()}`
-    : `${memberName} nop quy T${currentMonth}/${currentYear} (${amountNumber >= monthlyAmount ? '4 tuan' : formatVND(amountNumber)})`;
+    : `${memberName} nop quy T${currentMonth}/${currentYear} (${weekNoteSnippet})`;
 
   // Sinh link mã VietQR của Thủ quỹ
   const qrUrl = generateVietQRUrl({

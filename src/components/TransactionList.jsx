@@ -68,7 +68,9 @@ export const TransactionList = ({ onOpenAddModal, onOpenEditModal, onOpenReceipt
         totalExpense: summary.month_expense,
         totalPaidWeeks: totalPaidWeeks,
       },
-      contributions
+      contributions,
+      currentMonth,
+      currentYear
     );
   };
 
