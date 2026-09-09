@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   sendGoogleSheetsWebhook,
   syncTransactionToSheet, 
+  syncDeleteTransactionToSheet,
   syncContributionToSheet, 
   syncAllDataToSheet,
   testGoogleSheetsConnection,
@@ -664,7 +665,7 @@ export const dataService = {
           const defaultDesc = `${memberName} nộp quỹ Tuần ${week} Tháng ${month}/${year}`;
 
           if (isPaid) {
-            await supabase.from('transactions').insert({
+            const { data: createdTx } = await supabase.from('transactions').insert({
               type: 'income',
               amount: amount,
               category: 'Thu quỹ định kỳ',
@@ -672,11 +673,12 @@ export const dataService = {
               member_name: memberName,
               description: note || defaultDesc,
               transaction_date: new Date().toISOString().slice(0, 10),
-            });
+            }).select().single();
 
             // Gửi webhook Google Sheets
             syncContributionToSheet({ memberName, member_id: memberId, month, year, week, isPaid: true, note: note || defaultDesc });
             syncTransactionToSheet({
+              id: createdTx?.id,
               type: 'income',
               amount: amount,
               category: 'Thu quỹ định kỳ',
@@ -704,6 +706,7 @@ export const dataService = {
 
             if (targetTx) {
               await supabase.from('transactions').delete().eq('id', targetTx.id);
+              syncDeleteTransactionToSheet({ id: targetTx.id, memberName, description: targetTx.description });
             }
 
             syncContributionToSheet({ memberName, member_id: memberId, month, year, week, isPaid: false });
@@ -782,7 +785,7 @@ export const dataService = {
           const unpaidCount = 4 - currentlyPaidCount;
           const amountToRecord = unpaidCount > 0 ? unpaidCount * weeklyAmount : monthlyAmount;
           if (amountToRecord > 0) {
-            await supabase.from('transactions').insert({
+            const { data: createdTx } = await supabase.from('transactions').insert({
               type: 'income',
               amount: amountToRecord,
               category: 'Thu quỹ định kỳ',
@@ -790,9 +793,10 @@ export const dataService = {
               member_name: memberName,
               description: fullNote || `${memberName} nộp quỹ cả tháng ${month}/${year}`,
               transaction_date: new Date().toISOString().slice(0, 10),
-            });
+            }).select().single();
 
             syncTransactionToSheet({
+              id: createdTx?.id,
               type: 'income',
               amount: amountToRecord,
               category: 'Thu quỹ định kỳ',
@@ -823,6 +827,9 @@ export const dataService = {
 
           if (toDelete.length > 0) {
             await supabase.from('transactions').delete().in('id', toDelete.map((t) => t.id));
+            toDelete.forEach((t) => {
+              syncDeleteTransactionToSheet({ id: t.id, memberName, description: t.description });
+            });
           }
 
           for (let w = 1; w <= 4; w++) {
@@ -1074,6 +1081,9 @@ export const dataService = {
   },
 
   deleteTransaction: async (id) => {
+    // Gửi lệnh xóa sang Google Sheets
+    syncDeleteTransactionToSheet({ id });
+
     if (STORAGE_MODE === 'local_api') {
       try {
         await fetch(`${API_BASE_URL}/transactions?id=${id}`, { method: 'DELETE' });
@@ -1102,6 +1112,7 @@ export const googleSheetService = {
   sendWebhook: sendGoogleSheetsWebhook,
   testConnection: testGoogleSheetsConnection,
   syncTransaction: syncTransactionToSheet,
+  syncDeleteTransaction: syncDeleteTransactionToSheet,
   syncContribution: syncContributionToSheet,
   syncAllData: syncAllDataToSheet,
 };

@@ -2,18 +2,11 @@
  * =========================================================================================
  * GOOGLE APPS SCRIPT - HỆ THỐNG ĐỒNG BỘ QUẢN LÝ QUỸ THỜI GIAN THỰC (REAL-TIME WEBHOOK)
  * =========================================================================================
- * HƯỚNG DẪN CÀI ĐẶT NHANH TRONG 1 PHÚT:
- * 1. Mở file Google Sheets mới (hoặc file có sẵn).
- * 2. Trên thanh menu, chọn: Tiện ích mở rộng (Extensions) -> Apps Script.
- * 3. Xóa hết mã cũ trong file Code.gs và dán toàn bộ đoạn mã này vào.
- * 4. Nhấn nút "Triển khai" (Deploy) ở góc trên bên phải -> Chọn "Tùy chọn triển khai mới" (New deployment).
- * 5. Nhấp vào biểu tượng bánh răng (⚙️) -> Chọn "Ứng dụng web" (Web app).
- * 6. Điền:
- *    - Mô tả: "QuanLyQuy Webhook"
- *    - Thực thi dưới dạng (Execute as): "Tôi" (Me)
- *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone) - *Rất quan trọng!*
- * 7. Nhấn "Triển khai" (Deploy) -> Cấp quyền cho script -> Sao chép "URL của ứng dụng web" (Web App URL).
- * 8. Dán URL này vào mục Cài Đặt trên web Quản Lý Quỹ!
+ * HƯỚNG DẪN CẬP NHẬT:
+ * 1. Mở file Google Sheets -> Tiện ích mở rộng -> Apps Script.
+ * 2. Copy toàn bộ code này dán đè vào Code.gs và bấm Lưu (Ctrl + S).
+ * 3. Bấm Triển khai (Deploy) -> Quản lý các bản triển khai (Manage deployments).
+ * 4. Bấm biểu tượng cây bút (Chỉnh sửa) -> Tại mục "Phiên bản" chọn "Phiên bản mới" -> Bấm Triển khai.
  * =========================================================================================
  */
 
@@ -48,19 +41,25 @@ function doPost(e) {
       });
     }
 
-    // 2. Đồng bộ 1 giao dịch Thu / Chi
+    // 2. Đồng bộ 1 giao dịch Thu / Chi (Thêm hoặc Cập nhật)
     if (action === 'SYNC_TRANSACTION') {
       handleSyncTransaction(ss, payload);
       return jsonResponse({ status: 'success', message: 'Đã lưu giao dịch vào Sheet Lịch Sử Thu Chi' });
     }
 
-    // 3. Đồng bộ trạng thái đóng quỹ tuần
+    // 3. Xóa 1 giao dịch Thu / Chi khi hủy nộp hoặc xóa giao dịch
+    if (action === 'DELETE_TRANSACTION') {
+      handleDeleteTransaction(ss, payload);
+      return jsonResponse({ status: 'success', message: 'Đã xóa giao dịch khỏi Sheet Lịch Sử Thu Chi' });
+    }
+
+    // 4. Đồng bộ trạng thái đóng quỹ tuần của thành viên
     if (action === 'SYNC_CONTRIBUTION') {
       handleSyncContribution(ss, payload);
       return jsonResponse({ status: 'success', message: 'Đã cập nhật trạng thái đóng quỹ tuần' });
     }
 
-    // 4. Đồng bộ toàn bộ dữ liệu (Full Sync)
+    // 5. Đồng bộ toàn bộ dữ liệu (Full Sync)
     if (action === 'FULL_SYNC') {
       handleFullSync(ss, payload);
       return jsonResponse({ status: 'success', message: 'Đã đồng bộ toàn bộ dữ liệu lên Google Sheets thành công!' });
@@ -103,12 +102,19 @@ function getOrCreateSheet(ss, sheetName, headers) {
   return sheet;
 }
 
-// Xử lý ghi giao dịch vào Sheet "Lịch Sử Thu Chi"
+// Xử lý ghi/cập nhật giao dịch vào Sheet "Lịch Sử Thu Chi"
 function handleSyncTransaction(ss, tx) {
   var headers = ['Mã GD', 'Thời Gian', 'Loại', 'Số Tiền (VNĐ)', 'Danh Mục', 'Người Liên Quan', 'Nội Dung / Ghi Chú'];
   var sheet = getOrCreateSheet(ss, 'Lịch Sử Thu Chi', headers);
 
-  var txId = tx.id ? '#' + tx.id : '#' + Date.now();
+  // Chuẩn hóa Mã GD: Nếu có ID số từ database thì dùng #ID, nếu không dùng số thứ tự
+  var txId = '';
+  if (tx.id) {
+    txId = '#' + tx.id;
+  } else {
+    txId = '#' + sheet.getLastRow();
+  }
+
   var dateStr = tx.transaction_date || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd');
   var typeStr = tx.type === 'income' ? 'Thu (+)' : 'Chi (-)';
   var amount = Number(tx.amount) || 0;
@@ -116,29 +122,71 @@ function handleSyncTransaction(ss, tx) {
   var memberName = tx.member_name || tx.memberName || 'Thủ quỹ';
   var description = tx.description || '';
 
-  // Thêm dòng mới
-  sheet.appendRow([txId, dateStr, typeStr, amount, category, memberName, description]);
+  // Kiểm tra xem Mã GD này đã tồn tại trong bảng chưa
+  var data = sheet.getDataRange().getValues();
+  var targetRow = -1;
 
-  // Format số tiền cột D
-  var lastRow = sheet.getLastRow();
-  sheet.getRange(lastRow, 4).setNumberFormat('#,##0 "đ"');
-  
-  // Highlight màu theo loại thu chi
-  var typeCell = sheet.getRange(lastRow, 3);
-  if (tx.type === 'income') {
-    typeCell.setFontColor('#16a34a'); // Green
+  for (var i = 1; i < data.length; i++) {
+    var existingId = data[i][0] ? data[i][0].toString().trim() : '';
+    if (existingId === txId) {
+      targetRow = i + 1;
+      break;
+    }
+  }
+
+  if (targetRow > 0) {
+    // Đã có -> Cập nhật lại dòng này
+    sheet.getRange(targetRow, 1, 1, 7).setValues([[txId, dateStr, typeStr, amount, category, memberName, description]]);
+    sheet.getRange(targetRow, 4).setNumberFormat('#,##0 "đ"');
+    sheet.getRange(targetRow, 3).setFontColor(tx.type === 'income' ? '#16a34a' : '#dc2626');
   } else {
-    typeCell.setFontColor('#dc2626'); // Red
+    // Chưa có -> Thêm dòng mới vào cuối
+    sheet.appendRow([txId, dateStr, typeStr, amount, category, memberName, description]);
+    var lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow, 4).setNumberFormat('#,##0 "đ"');
+    sheet.getRange(lastRow, 3).setFontColor(tx.type === 'income' ? '#16a34a' : '#dc2626');
   }
 }
 
-// Xử lý cập nhật đóng quỹ vào Sheet "Theo Dõi Đóng Quỹ Tuần"
+// Xử lý xóa giao dịch khỏi Sheet "Lịch Sử Thu Chi"
+function handleDeleteTransaction(ss, payload) {
+  var sheet = ss.getSheetByName('Lịch Sử Thu Chi');
+  if (!sheet || sheet.getLastRow() <= 1) return;
+
+  var data = sheet.getDataRange().getValues();
+  var targetId = payload.id ? '#' + payload.id : '';
+  var desc = payload.description ? payload.description.trim().toLowerCase() : '';
+  var member = payload.memberName ? payload.memberName.trim().toLowerCase() : '';
+
+  // Duyệt từ dưới lên trên để xóa đúng dòng
+  for (var i = data.length - 1; i >= 1; i--) {
+    var rowId = data[i][0] ? data[i][0].toString().trim() : '';
+    var rowMember = data[i][5] ? data[i][5].toString().trim().toLowerCase() : '';
+    var rowDesc = data[i][6] ? data[i][6].toString().trim().toLowerCase() : '';
+
+    var isMatch = false;
+    if (targetId && rowId === targetId) {
+      isMatch = true;
+    } else if (member && desc && rowMember === member && rowDesc.includes(desc)) {
+      isMatch = true;
+    } else if (desc && rowDesc.includes(desc)) {
+      isMatch = true;
+    }
+
+    if (isMatch) {
+      sheet.deleteRow(i + 1);
+      break; // Xóa 1 dòng khớp nhất
+    }
+  }
+}
+
+// Xử lý cập nhật đóng quỹ vào Sheet "Đóng Quỹ T{month}_{year}"
 function handleSyncContribution(ss, payload) {
   var month = payload.month || (new Date().getMonth() + 1);
   var year = payload.year || new Date().getFullYear();
   var sheetName = 'Đóng Quỹ T' + month + '_' + year;
 
-  var headers = ['STT', 'Họ & Tên Thành Viên', 'Ngân Hàng', 'Số Tài Khoản', 'Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4', 'Tổng Đã Nộp (VNĐ)', 'Trạng Thái Tháng', 'Ghi Chú'];
+  var headers = ['STT', 'Họ & Tên Thành Viên', 'Ngân Hàng', 'Số Tài Khoản', 'Tuần 1 (01-07)', 'Tuần 2 (08-14)', 'Tuần 3 (15-21)', 'Tuần 4 (22-hết)', 'Tổng Đã Nộp (VNĐ)', 'Trạng Thái Tháng', 'Ghi Chú'];
   var sheet = getOrCreateSheet(ss, sheetName, headers);
 
   var memberName = payload.memberName || payload.member_name;
@@ -157,7 +205,7 @@ function handleSyncContribution(ss, payload) {
   // Nếu tìm thấy dòng thành viên, cập nhật tuần tương ứng
   if (targetRow > 0 && payload.week) {
     var weekCol = 4 + Number(payload.week); // Cột E (T1), F (T2), G (T3), H (T4)
-    var isPaidStr = payload.isPaid ? '✅ Đã nộp (10.000đ)' : '❌ Chưa nộp';
+    var isPaidStr = payload.isPaid ? '✅ Đã nộp' : '❌ Chưa nộp';
     sheet.getRange(targetRow, weekCol).setValue(isPaidStr);
     
     if (payload.isPaid) {
@@ -165,6 +213,21 @@ function handleSyncContribution(ss, payload) {
     } else {
       sheet.getRange(targetRow, weekCol).setFontColor('#dc2626');
     }
+
+    // Đếm lại số tuần đã nộp để cập nhật Tổng tiền và Trạng thái
+    var rowVals = sheet.getRange(targetRow, 5, 1, 4).getValues()[0];
+    var paidCount = 0;
+    for (var k = 0; k < rowVals.length; k++) {
+      if (rowVals[k] && rowVals[k].toString().includes('Đã nộp')) {
+        paidCount++;
+      }
+    }
+
+    var totalAmt = paidCount * 10000;
+    var statusStr = paidCount === 4 ? 'Đã nộp đủ 4/4 tuần' : 'Đã nộp ' + paidCount + '/4 tuần';
+
+    sheet.getRange(targetRow, 9).setValue(totalAmt).setNumberFormat('#,##0 "đ"');
+    sheet.getRange(targetRow, 10).setValue(statusStr);
   }
 }
 
@@ -198,6 +261,12 @@ function handleFullSync(ss, payload) {
     });
     txSheet.getRange(2, 1, txRows.length, txHeaders.length).setValues(txRows);
     txSheet.getRange(2, 4, txRows.length, 1).setNumberFormat('#,##0 "đ"');
+
+    // Tô màu cột loại Thu (+) / Chi (-)
+    for (var r = 0; r < transactions.length; r++) {
+      var color = transactions[r].type === 'income' ? '#16a34a' : '#dc2626';
+      txSheet.getRange(r + 2, 3).setFontColor(color);
+    }
   }
 
   // 2. Ghi lại Sheet "Đóng Quỹ Tuần"

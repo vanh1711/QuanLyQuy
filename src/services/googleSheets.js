@@ -123,11 +123,21 @@ export const syncAllDataToSheet = async ({ transactions, contributions, month, y
   );
 };
 
+/**
+ * Đồng bộ xóa 1 giao dịch khỏi Google Sheet
+ */
+export const syncDeleteTransactionToSheet = ({ id, description, memberName }) => {
+  setTimeout(() => {
+    sendGoogleSheetsWebhook('DELETE_TRANSACTION', { id, description, memberName });
+  }, 100);
+};
+
 export const googleSheetService = {
   getUrl: getGoogleSheetsWebhookUrl,
   sendWebhook: sendGoogleSheetsWebhook,
   testConnection: testGoogleSheetsConnection,
   syncTransaction: syncTransactionToSheet,
+  syncDeleteTransaction: syncDeleteTransactionToSheet,
   syncContribution: syncContributionToSheet,
   syncAllData: syncAllDataToSheet,
 };
