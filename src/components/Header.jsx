@@ -11,14 +11,16 @@ import {
   Users, 
   BarChart3, 
   Receipt,
-  LogOut
+  LogOut,
+  FileSpreadsheet,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useFund } from '../context/FundContext';
 
 export const Header = ({ onOpenSettings, isDarkMode, onToggleTheme }) => {
   const { isAdmin, openPinModal, lockAdmin, lockGroupAccess } = useAuth();
-  const { isRefreshing, refreshData, activeTab, setActiveTab } = useFund();
+  const { isRefreshing, refreshData, activeTab, setActiveTab, settings } = useFund();
 
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-slate-200/80 dark:border-slate-800/80 transition-all duration-200">
@@ -96,6 +98,21 @@ export const Header = ({ onOpenSettings, isDarkMode, onToggleTheme }) => {
           {/* Right Actions */}
           <div className="flex items-center gap-2">
             
+            {/* Google Sheet Public Button */}
+            {settings.google_sheet_view_url && (
+              <a
+                href={settings.google_sheet_view_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Mở Google Sheets thời gian thực trên Google Drive"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200/80 dark:border-teal-800 text-xs font-bold transition-all shadow-xs group"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Google Sheet</span>
+                <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+              </a>
+            )}
+
             {/* Refresh Button */}
             <button
               onClick={refreshData}

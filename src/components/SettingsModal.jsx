@@ -70,9 +70,12 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const [groupPassword, setGroupPassword] = useState(settings.group_password || '123456');
   const [copiedGroupPwd, setCopiedGroupPwd] = useState(false);
 
-  // Google Sheets Webhook states
+  // Google Sheets Webhook & Public View states
   const [googleSheetWebhookUrl, setGoogleSheetWebhookUrl] = useState(
     settings.google_sheet_webhook_url || localStorage.getItem('GOOGLE_SHEET_WEBHOOK_URL') || ''
+  );
+  const [googleSheetViewUrl, setGoogleSheetViewUrl] = useState(
+    settings.google_sheet_view_url || localStorage.getItem('GOOGLE_SHEET_VIEW_URL') || ''
   );
   const [isTestingSheet, setIsTestingSheet] = useState(false);
   const [sheetTestResult, setSheetTestResult] = useState(null);
@@ -100,6 +103,9 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       setGroupPassword(settings.group_password || '123456');
       setGoogleSheetWebhookUrl(
         settings.google_sheet_webhook_url || localStorage.getItem('GOOGLE_SHEET_WEBHOOK_URL') || ''
+      );
+      setGoogleSheetViewUrl(
+        settings.google_sheet_view_url || localStorage.getItem('GOOGLE_SHEET_VIEW_URL') || ''
       );
       setSheetTestResult(null);
       setFullSyncResult(null);
@@ -290,6 +296,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         monthly_amount: parseFormattedNumber(monthlyAmount).toString() || '40000',
         group_password: groupPassword.trim(),
         google_sheet_webhook_url: googleSheetWebhookUrl.trim(),
+        google_sheet_view_url: googleSheetViewUrl.trim(),
       };
 
       if (newPin) {
@@ -892,6 +899,37 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   <span>{fullSyncResult.message}</span>
                 </div>
               )}
+
+              {/* Ô Nhập Link Google Sheet xem công khai */}
+              <div className="space-y-2 p-3.5 rounded-2xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800/60">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                    <span>Link Chia Sẻ Google Sheet (Cho thành viên bấm xem):</span>
+                  </span>
+                  {googleSheetViewUrl && (
+                    <a
+                      href={googleSheetViewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-teal-600 dark:text-teal-400 font-bold hover:underline flex items-center gap-0.5"
+                    >
+                      <span>Mở thử</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </label>
+                <input
+                  type="url"
+                  value={googleSheetViewUrl}
+                  onChange={(e) => setGoogleSheetViewUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
+                  className="w-full px-3.5 py-2.5 text-xs font-mono font-medium rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  💡 <b>Hướng dẫn:</b> Mở Google Sheet của bạn &gt; Bấm <b>Chia sẻ</b> &gt; Chọn <b>Bất kỳ ai có đường liên kết (Người xem)</b> &gt; Copy link dán vào đây. Nút <b>"📊 Xem Google Sheet"</b> sẽ tự động hiện trên web cho mọi người!
+                </p>
+              </div>
 
               {/* Hướng Dẫn Cài Đặt Nhanh 1 Phút */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2 text-[11px] text-slate-600 dark:text-slate-300">

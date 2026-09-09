@@ -11,6 +11,7 @@ import {
   Trash2,
   Calendar,
   User,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useFund } from '../context/FundContext';
@@ -18,7 +19,7 @@ import { formatVND, formatDate, exportTransactionsToExcel } from '../utils/forma
 
 export const TransactionList = ({ onOpenAddModal, onOpenEditModal, onOpenReceiptModal }) => {
   const { isAdmin } = useAuth();
-  const { transactions, removeTransaction, summary, contributions, currentMonth, currentYear } = useFund();
+  const { transactions, removeTransaction, summary, contributions, currentMonth, currentYear, settings } = useFund();
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'income', 'expense'
@@ -95,6 +96,21 @@ export const TransactionList = ({ onOpenAddModal, onOpenEditModal, onOpenReceipt
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Nút Xem Google Sheet Trực Tuyến */}
+          {settings.google_sheet_view_url && (
+            <a
+              href={settings.google_sheet_view_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900 transition-colors shadow-xs group"
+              title="Mở Google Sheets trực tuyến để xem số liệu thời gian thực"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform" />
+              <span>Xem Google Sheet</span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+            </a>
+          )}
+
           {/* Nút Xuất Excel */}
           <button
             onClick={handleExportExcel}
