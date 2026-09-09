@@ -6,7 +6,7 @@
  * 1. Mở file Google Sheets -> Tiện ích mở rộng -> Apps Script.
  * 2. Copy toàn bộ code này dán đè vào Code.gs và bấm Lưu (Ctrl + S).
  * 3. Bấm Triển khai (Deploy) -> Quản lý các bản triển khai (Manage deployments).
- * 4. Bấm biểu tượng cây bút (Chỉnh sửa) -> Tại mục "Phiên bản" chọn "Phiên bản mới" -> Bấm Triển khai.
+ * 4. Bấm biểu tượng cây bút ✏️ -> Tại mục "Phiên bản" chọn "Phiên bản mới" -> Bấm Triển khai.
  * =========================================================================================
  */
 
@@ -84,6 +84,18 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Tự động đánh số lại STT 1, 2, 3, 4... liên tục không bị nhảy số
+function renumberSTT(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+  var sttValues = [];
+  for (var i = 1; i <= lastRow - 1; i++) {
+    sttValues.push([i]);
+  }
+  sheet.getRange(2, 1, sttValues.length, 1).setValues(sttValues);
+  sheet.getRange(2, 1, sttValues.length, 1).setHorizontalAlignment('center');
+}
+
 // Lấy hoặc tự động tạo Sheet theo tên kèm tiêu đề cột đẹp mắt
 function getOrCreateSheet(ss, sheetName, headers) {
   var sheet = ss.getSheetByName(sheetName);
@@ -102,18 +114,10 @@ function getOrCreateSheet(ss, sheetName, headers) {
   return sheet;
 }
 
-// Xử lý ghi/cập nhật giao dịch vào Sheet "Lịch Sử Thu Chi"
+// Xử lý ghi/cập nhật giao dịch vào Sheet "Lịch Sử Thu Chi" với STT 1, 2, 3...
 function handleSyncTransaction(ss, tx) {
-  var headers = ['Mã GD', 'Thời Gian', 'Loại', 'Số Tiền (VNĐ)', 'Danh Mục', 'Người Liên Quan', 'Nội Dung / Ghi Chú'];
+  var headers = ['STT', 'Thời Gian', 'Loại', 'Số Tiền (VNĐ)', 'Danh Mục', 'Người Liên Quan', 'Nội Dung / Ghi Chú'];
   var sheet = getOrCreateSheet(ss, 'Lịch Sử Thu Chi', headers);
-
-  // Chuẩn hóa Mã GD: Nếu có ID số từ database thì dùng #ID, nếu không dùng số thứ tự
-  var txId = '';
-  if (tx.id) {
-    txId = '#' + tx.id;
-  } else {
-    txId = '#' + sheet.getLastRow();
-  }
 
   var dateStr = tx.transaction_date || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd');
   var typeStr = tx.type === 'income' ? 'Thu (+)' : 'Chi (-)';
@@ -122,13 +126,16 @@ function handleSyncTransaction(ss, tx) {
   var memberName = tx.member_name || tx.memberName || 'Thủ quỹ';
   var description = tx.description || '';
 
-  // Kiểm tra xem Mã GD này đã tồn tại trong bảng chưa
+  // Kiểm tra xem giao dịch này đã có trong bảng chưa
   var data = sheet.getDataRange().getValues();
   var targetRow = -1;
 
   for (var i = 1; i < data.length; i++) {
-    var existingId = data[i][0] ? data[i][0].toString().trim() : '';
-    if (existingId === txId) {
+    var rowDate = data[i][1] ? data[i][1].toString().trim() : '';
+    var rowMember = data[i][5] ? data[i][5].toString().trim() : '';
+    var rowDesc = data[i][6] ? data[i][6].toString().trim() : '';
+
+    if (rowMember === memberName && rowDesc === description && rowDate === dateStr) {
       targetRow = i + 1;
       break;
     }
@@ -136,38 +143,38 @@ function handleSyncTransaction(ss, tx) {
 
   if (targetRow > 0) {
     // Đã có -> Cập nhật lại dòng này
-    sheet.getRange(targetRow, 1, 1, 7).setValues([[txId, dateStr, typeStr, amount, category, memberName, description]]);
+    sheet.getRange(targetRow, 2, 1, 6).setValues([[dateStr, typeStr, amount, category, memberName, description]]);
     sheet.getRange(targetRow, 4).setNumberFormat('#,##0 "đ"');
     sheet.getRange(targetRow, 3).setFontColor(tx.type === 'income' ? '#16a34a' : '#dc2626');
   } else {
     // Chưa có -> Thêm dòng mới vào cuối
-    sheet.appendRow([txId, dateStr, typeStr, amount, category, memberName, description]);
+    var nextStt = sheet.getLastRow();
+    sheet.appendRow([nextStt, dateStr, typeStr, amount, category, memberName, description]);
     var lastRow = sheet.getLastRow();
     sheet.getRange(lastRow, 4).setNumberFormat('#,##0 "đ"');
     sheet.getRange(lastRow, 3).setFontColor(tx.type === 'income' ? '#16a34a' : '#dc2626');
   }
+
+  // Luôn đánh lại số thứ tự STT 1, 2, 3, 4... liên tục
+  renumberSTT(sheet);
 }
 
-// Xử lý xóa giao dịch khỏi Sheet "Lịch Sử Thu Chi"
+// Xử lý xóa giao dịch khỏi Sheet "Lịch Sử Thu Chi" và đánh số lại STT
 function handleDeleteTransaction(ss, payload) {
   var sheet = ss.getSheetByName('Lịch Sử Thu Chi');
   if (!sheet || sheet.getLastRow() <= 1) return;
 
   var data = sheet.getDataRange().getValues();
-  var targetId = payload.id ? '#' + payload.id : '';
   var desc = payload.description ? payload.description.trim().toLowerCase() : '';
   var member = payload.memberName ? payload.memberName.trim().toLowerCase() : '';
 
   // Duyệt từ dưới lên trên để xóa đúng dòng
   for (var i = data.length - 1; i >= 1; i--) {
-    var rowId = data[i][0] ? data[i][0].toString().trim() : '';
     var rowMember = data[i][5] ? data[i][5].toString().trim().toLowerCase() : '';
     var rowDesc = data[i][6] ? data[i][6].toString().trim().toLowerCase() : '';
 
     var isMatch = false;
-    if (targetId && rowId === targetId) {
-      isMatch = true;
-    } else if (member && desc && rowMember === member && rowDesc.includes(desc)) {
+    if (member && desc && rowMember === member && rowDesc.includes(desc)) {
       isMatch = true;
     } else if (desc && rowDesc.includes(desc)) {
       isMatch = true;
@@ -178,6 +185,9 @@ function handleDeleteTransaction(ss, payload) {
       break; // Xóa 1 dòng khớp nhất
     }
   }
+
+  // Đánh lại số thứ tự STT sau khi xóa
+  renumberSTT(sheet);
 }
 
 // Xử lý cập nhật đóng quỹ vào Sheet "Đóng Quỹ T{month}_{year}"
@@ -239,7 +249,7 @@ function handleFullSync(ss, payload) {
   var year = payload.year || new Date().getFullYear();
 
   // 1. Ghi lại toàn bộ Sheet "Lịch Sử Thu Chi"
-  var txHeaders = ['Mã GD', 'Thời Gian', 'Loại', 'Số Tiền (VNĐ)', 'Danh Mục', 'Người Liên Quan', 'Nội Dung / Ghi Chú'];
+  var txHeaders = ['STT', 'Thời Gian', 'Loại', 'Số Tiền (VNĐ)', 'Danh Mục', 'Người Liên Quan', 'Nội Dung / Ghi Chú'];
   var txSheet = getOrCreateSheet(ss, 'Lịch Sử Thu Chi', txHeaders);
   
   // Xóa dữ liệu cũ trừ hàng tiêu đề
@@ -248,9 +258,16 @@ function handleFullSync(ss, payload) {
   }
 
   if (transactions.length > 0) {
-    var txRows = transactions.map(function(t) {
+    // Sắp xếp giao dịch theo ngày/thứ tự tăng dần
+    var sortedTxs = transactions.slice().sort(function(a, b) {
+      var dateA = new Date(a.transaction_date || 0);
+      var dateB = new Date(b.transaction_date || 0);
+      return dateA - dateB || (a.id || 0) - (b.id || 0);
+    });
+
+    var txRows = sortedTxs.map(function(t, idx) {
       return [
-        t.id ? '#' + t.id : '',
+        idx + 1,
         t.transaction_date || '',
         t.type === 'income' ? 'Thu (+)' : 'Chi (-)',
         Number(t.amount) || 0,
@@ -259,12 +276,14 @@ function handleFullSync(ss, payload) {
         t.description || ''
       ];
     });
+
     txSheet.getRange(2, 1, txRows.length, txHeaders.length).setValues(txRows);
     txSheet.getRange(2, 4, txRows.length, 1).setNumberFormat('#,##0 "đ"');
+    txSheet.getRange(2, 1, txRows.length, 1).setHorizontalAlignment('center');
 
     // Tô màu cột loại Thu (+) / Chi (-)
-    for (var r = 0; r < transactions.length; r++) {
-      var color = transactions[r].type === 'income' ? '#16a34a' : '#dc2626';
+    for (var r = 0; r < sortedTxs.length; r++) {
+      var color = sortedTxs[r].type === 'income' ? '#16a34a' : '#dc2626';
       txSheet.getRange(r + 2, 3).setFontColor(color);
     }
   }
@@ -303,5 +322,6 @@ function handleFullSync(ss, payload) {
 
     conSheet.getRange(2, 1, conRows.length, conHeaders.length).setValues(conRows);
     conSheet.getRange(2, 9, conRows.length, 1).setNumberFormat('#,##0 "đ"');
+    conSheet.getRange(2, 1, conRows.length, 1).setHorizontalAlignment('center');
   }
 }
