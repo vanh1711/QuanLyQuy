@@ -21,9 +21,16 @@ import {
   Users,
   ShieldCheck,
   Upload,
-  Trash2
+  Trash2,
+  FileSpreadsheet,
+  RefreshCw,
+  ExternalLink,
+  AlertCircle,
+  Radio,
+  Zap
 } from 'lucide-react';
 import { useFund } from '../context/FundContext';
+import { googleSheetService } from '../services/googleSheets';
 import { 
   VIETNAM_BANKS, 
   generateVietQRUrl, 
@@ -40,9 +47,16 @@ const QR_TEMPLATES = [
 ];
 
 export const SettingsModal = ({ isOpen, onClose }) => {
-  const { settings, updateAppSettings } = useFund();
+  const { 
+    settings, 
+    updateAppSettings, 
+    transactions, 
+    contributions, 
+    currentMonth, 
+    currentYear 
+  } = useFund();
 
-  const [activeSubTab, setActiveSubTab] = useState('qr'); // 'qr', 'rules', 'pin'
+  const [activeSubTab, setActiveSubTab] = useState('qr'); // 'qr', 'rules', 'pin', 'sheets'
   const [bankId, setBankId] = useState(settings.bank_id || 'MBBank');
   const [bankAccountNo, setBankAccountNo] = useState(settings.bank_account_no || '0988888888');
   const [bankAccountName, setBankAccountName] = useState(settings.bank_account_name || 'NGUYEN VAN THU QUY');
@@ -55,6 +69,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
   const [groupPassword, setGroupPassword] = useState(settings.group_password || '123456');
   const [copiedGroupPwd, setCopiedGroupPwd] = useState(false);
+
+  // Google Sheets Webhook states
+  const [googleSheetWebhookUrl, setGoogleSheetWebhookUrl] = useState(
+    settings.google_sheet_webhook_url || localStorage.getItem('GOOGLE_SHEET_WEBHOOK_URL') || ''
+  );
+  const [isTestingSheet, setIsTestingSheet] = useState(false);
+  const [sheetTestResult, setSheetTestResult] = useState(null);
+  const [isFullSyncing, setIsFullSyncing] = useState(false);
+  const [fullSyncResult, setFullSyncResult] = useState(null);
 
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -75,6 +98,11 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       setWeeklyAmount(formatNumberInput(settings.weekly_amount || '10000'));
       setMonthlyAmount(formatNumberInput(settings.monthly_amount || '40000'));
       setGroupPassword(settings.group_password || '123456');
+      setGoogleSheetWebhookUrl(
+        settings.google_sheet_webhook_url || localStorage.getItem('GOOGLE_SHEET_WEBHOOK_URL') || ''
+      );
+      setSheetTestResult(null);
+      setFullSyncResult(null);
       setNewPin('');
       setConfirmPin('');
       setErrorMsg('');
@@ -166,6 +194,57 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     setTimeout(() => setCopiedGroupPwd(false), 2000);
   };
 
+  const handleTestGoogleSheets = async () => {
+    if (!googleSheetWebhookUrl.trim()) {
+      setSheetTestResult({ success: false, message: 'Vui lòng dán Webhook URL của Google Apps Script trước!' });
+      return;
+    }
+    setIsTestingSheet(true);
+    setSheetTestResult(null);
+    try {
+      const res = await googleSheetService.testConnection(googleSheetWebhookUrl.trim());
+      if (res.success) {
+        setSheetTestResult({ success: true, message: res.message || 'Kết nối Google Sheet thành công 100%!' });
+      } else {
+        setSheetTestResult({ success: false, message: res.message || 'Không thể kết nối với Webhook URL' });
+      }
+    } catch (err) {
+      setSheetTestResult({ success: false, message: err.message || 'Lỗi khi gửi request kiểm tra' });
+    } finally {
+      setIsTestingSheet(false);
+    }
+  };
+
+  const handleFullSyncGoogleSheets = async () => {
+    if (!googleSheetWebhookUrl.trim()) {
+      setFullSyncResult({ success: false, message: 'Vui lòng dán Webhook URL của Google Apps Script trước!' });
+      return;
+    }
+    setIsFullSyncing(true);
+    setFullSyncResult(null);
+    try {
+      const res = await googleSheetService.syncAllData({
+        transactions,
+        contributions,
+        month: currentMonth,
+        year: currentYear
+      }, googleSheetWebhookUrl.trim());
+
+      if (res.success) {
+        setFullSyncResult({ 
+          success: true, 
+          message: `Đồng bộ thành công ${transactions?.length || 0} giao dịch & ${contributions?.length || 0} thành viên lên Google Sheets!` 
+        });
+      } else {
+        setFullSyncResult({ success: false, message: res.message || 'Lỗi trong quá trình đồng bộ' });
+      }
+    } catch (err) {
+      setFullSyncResult({ success: false, message: err.message || 'Lỗi kết nối' });
+    } finally {
+      setIsFullSyncing(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -210,6 +289,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         weekly_amount: parseFormattedNumber(weeklyAmount).toString() || '10000',
         monthly_amount: parseFormattedNumber(monthlyAmount).toString() || '40000',
         group_password: groupPassword.trim(),
+        google_sheet_webhook_url: googleSheetWebhookUrl.trim(),
       };
 
       if (newPin) {
@@ -244,7 +324,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 Cài Đặt Hệ Thống & Bảo Mật Quỹ
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Cập nhật thông tin STK, QR quỹ, mức đóng và mật khẩu truy cập
+                Cập nhật thông tin STK, QR quỹ, mức đóng, Google Sheets và mật khẩu
               </p>
             </div>
           </div>
@@ -257,44 +337,62 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Sub-Tabs Selector */}
-        <div className="flex items-center gap-2 px-6 pt-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="flex items-center gap-1.5 px-6 pt-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveSubTab('qr')}
-            className={`flex items-center gap-1.5 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-1.5 pb-3 px-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
               activeSubTab === 'qr'
                 ? 'border-brand-600 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
             }`}
           >
             <QrCode className="w-4 h-4" />
-            <span>1. Mã QR & STK Nhận Tiền</span>
+            <span>1. Mã QR & STK</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('rules')}
-            className={`flex items-center gap-1.5 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-1.5 pb-3 px-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
               activeSubTab === 'rules'
                 ? 'border-brand-600 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
             }`}
           >
             <DollarSign className="w-4 h-4" />
-            <span>2. Mức Đóng Quỹ (Tuần/Tháng)</span>
+            <span>2. Mức Đóng Quỹ</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('pin')}
-            className={`flex items-center gap-1.5 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-1.5 pb-3 px-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
               activeSubTab === 'pin'
                 ? 'border-brand-600 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
             }`}
           >
             <Lock className="w-4 h-4" />
-            <span>3. Bảo Mật & Mật Khẩu</span>
+            <span>3. Bảo Mật & PIN</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('sheets')}
+            className={`flex items-center gap-1.5 pb-3 px-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
+              activeSubTab === 'sheets'
+                ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="flex items-center gap-1">
+              <span>4. Google Sheets</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-extrabold uppercase animate-pulse">
+                Live
+              </span>
+            </span>
           </button>
         </div>
 
@@ -673,6 +771,141 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     </div>
                   )}
                 </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 4: TÍCH HỢP GOOGLE SHEETS THỜI GIAN THỰC */}
+          {activeSubTab === 'sheets' && (
+            <div className="space-y-5 max-w-lg mx-auto py-2 animate-fade-in">
+              
+              {/* Banner Giới Thiệu */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-teal-500/10 border border-emerald-200 dark:border-emerald-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-xl bg-emerald-500 text-white shadow-sm">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </div>
+                    <span className="font-extrabold text-xs text-emerald-950 dark:text-emerald-200">
+                      Tự Động Ghi Dữ Liệu Vào Google Sheets
+                    </span>
+                  </div>
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                    <Zap className="w-3 h-3 text-amber-500 animate-pulse" />
+                    <span>Real-time Webhook</span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-900/90 dark:text-emerald-300/90 leading-relaxed">
+                  Mỗi khi có giao dịch <b>Thu/Chi</b> mới, <b>Đóng quỹ nhanh</b> hoặc <b>Đánh dấu tuần</b>, hệ thống sẽ tự động cập nhật ngay lập tức vào Google Sheet mà không làm đơ web.
+                </p>
+              </div>
+
+              {/* Ô Nhập Webhook URL */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Google Apps Script Webhook URL:</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">URL kết thúc bằng /exec</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="url"
+                    value={googleSheetWebhookUrl}
+                    onChange={(e) => {
+                      setGoogleSheetWebhookUrl(e.target.value);
+                      setSheetTestResult(null);
+                      setFullSyncResult(null);
+                    }}
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                    className="w-full px-3.5 py-2.5 text-xs font-mono font-medium rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 pr-20"
+                  />
+                  {googleSheetWebhookUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleSheetWebhookUrl('');
+                        setSheetTestResult(null);
+                        setFullSyncResult(null);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-1 text-[10px] font-semibold text-slate-400 hover:text-rose-500 bg-slate-200 dark:bg-slate-700 rounded-lg transition-colors"
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Nút Kiểm tra kết nối & Đồng bộ toàn bộ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestGoogleSheets}
+                  disabled={isTestingSheet || !googleSheetWebhookUrl.trim()}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingSheet ? 'animate-spin' : ''}`} />
+                  <span>{isTestingSheet ? 'Đang Kiểm Tra...' : '🔗 Kiểm Tra Kết Nối'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleFullSyncGoogleSheets}
+                  disabled={isFullSyncing || !googleSheetWebhookUrl.trim()}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                >
+                  <FileSpreadsheet className={`w-3.5 h-3.5 ${isFullSyncing ? 'animate-bounce' : ''}`} />
+                  <span>{isFullSyncing ? 'Đang Đồng Bộ...' : '🚀 Đồng Bộ Toàn Bộ'}</span>
+                </button>
+              </div>
+
+              {/* Thông báo kết quả Test */}
+              {sheetTestResult && (
+                <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-semibold animate-fade-in ${
+                  sheetTestResult.success
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+                }`}>
+                  {sheetTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                  )}
+                  <span>{sheetTestResult.message}</span>
+                </div>
+              )}
+
+              {/* Thông báo kết quả Full Sync */}
+              {fullSyncResult && (
+                <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-semibold animate-fade-in ${
+                  fullSyncResult.success
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+                }`}>
+                  {fullSyncResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                  )}
+                  <span>{fullSyncResult.message}</span>
+                </div>
+              )}
+
+              {/* Hướng Dẫn Cài Đặt Nhanh 1 Phút */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2 text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span>📋 5 bước kết nối Google Sheets (Chỉ mất 1 phút):</span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">Đã có mã mẫu sẵn</span>
+                </div>
+                <ol className="list-decimal pl-4 space-y-1 text-slate-500 dark:text-slate-400 leading-relaxed text-[11px]">
+                  <li>Tạo 1 bảng tính Google Sheets mới trên Google Drive của bạn.</li>
+                  <li>Vào menu <b>Tiện ích mở rộng (Extensions) &gt; Apps Script</b>.</li>
+                  <li>Mở file <b><code className="text-brand-600 dark:text-brand-400 font-mono">google_apps_script.js</code></b> trong mã nguồn dự án, copy toàn bộ và dán vào Apps Script.</li>
+                  <li>Bấm <b>Triển khai (Deploy) &gt; Tùy chọn triển khai mới (New deployment) &gt; Ứng dụng web (Web app)</b>. Chọn quyền truy cập: <b>Bất kỳ ai (Anyone)</b>.</li>
+                  <li>Copy đường link <b>Web App URL</b> (kết thúc bằng <code className="text-emerald-600 font-mono">/exec</code>) dán vào ô bên trên và bấm <b>Lưu Thay Đổi</b>!</li>
+                </ol>
               </div>
 
             </div>

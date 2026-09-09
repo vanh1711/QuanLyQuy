@@ -1,4 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { 
+  syncTransactionToSheet, 
+  syncContributionToSheet, 
+  syncAllDataToSheet,
+  testGoogleSheetsConnection,
+  getGoogleSheetsWebhookUrl 
+} from './googleSheets';
 
 const VERIFIED_SUPABASE_URL = 'https://bhcosxwmbogjjkcdlbdp.supabase.co';
 const VERIFIED_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY29zeHdtYm9namprY2RsYmRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MDI5NzAsImV4cCI6MjEwNDI3ODk3MH0.Jp7PrlB2NzX_mqPBjsZVrX_prytP5w1hxseG4cPYxr0';
@@ -58,6 +65,7 @@ const DEFAULT_SETTINGS = {
   monthly_amount: '40000',
   qr_template: 'compact2',
   custom_qr_url: '',
+  google_sheet_webhook_url: '',
 };
 
 const DEFAULT_MEMBERS = [
@@ -664,6 +672,17 @@ export const dataService = {
               description: note || defaultDesc,
               transaction_date: new Date().toISOString().slice(0, 10),
             });
+
+            // Gửi webhook Google Sheets
+            syncContributionToSheet({ memberName, member_id: memberId, month, year, week, isPaid: true, note: note || defaultDesc });
+            syncTransactionToSheet({
+              type: 'income',
+              amount: amount,
+              category: 'Thu quỹ định kỳ',
+              member_name: memberName,
+              description: note || defaultDesc,
+              transaction_date: new Date().toISOString().slice(0, 10),
+            });
           } else {
             // Hủy nộp: Xóa giao dịch thu của tuần này
             const { data: existingTxs } = await supabase
@@ -685,6 +704,8 @@ export const dataService = {
             if (targetTx) {
               await supabase.from('transactions').delete().eq('id', targetTx.id);
             }
+
+            syncContributionToSheet({ memberName, member_id: memberId, month, year, week, isPaid: false });
           }
         }
 
@@ -769,6 +790,19 @@ export const dataService = {
               description: fullNote || `${memberName} nộp quỹ cả tháng ${month}/${year}`,
               transaction_date: new Date().toISOString().slice(0, 10),
             });
+
+            syncTransactionToSheet({
+              type: 'income',
+              amount: amountToRecord,
+              category: 'Thu quỹ định kỳ',
+              member_name: memberName,
+              description: fullNote || `${memberName} nộp quỹ cả tháng ${month}/${year}`,
+              transaction_date: new Date().toISOString().slice(0, 10),
+            });
+          }
+
+          for (let w = 1; w <= 4; w++) {
+            syncContributionToSheet({ memberName, member_id: memberId, month, year, week: w, isPaid: true, note: fullNote });
           }
         } else {
           // Hủy nộp cả tháng: Xóa các giao dịch nộp quỹ tháng này của thành viên
@@ -788,6 +822,10 @@ export const dataService = {
 
           if (toDelete.length > 0) {
             await supabase.from('transactions').delete().in('id', toDelete.map((t) => t.id));
+          }
+
+          for (let w = 1; w <= 4; w++) {
+            syncContributionToSheet({ memberName, member_id: memberId, month, year, week: w, isPaid: false });
           }
         }
 
@@ -862,6 +900,21 @@ export const dataService = {
           description: fullNote,
           transaction_date: new Date().toISOString().slice(0, 10),
         });
+
+        // Gửi webhook Google Sheets
+        syncTransactionToSheet({
+          type: 'income',
+          amount: Number(amount),
+          category: 'Thu quỹ định kỳ',
+          member_id,
+          member_name: memberName,
+          description: fullNote,
+          transaction_date: new Date().toISOString().slice(0, 10),
+        });
+
+        for (let w = 1; w <= weeksToPay; w++) {
+          syncContributionToSheet({ memberName, member_id, month, year, week: w, isPaid: true, note: fullNote });
+        }
 
         return true;
       } catch (e) {
@@ -960,6 +1013,7 @@ export const dataService = {
   },
 
   createTransaction: async (tx) => {
+    let createdId = Date.now();
     if (STORAGE_MODE === 'local_api') {
       try {
         const res = await fetch(`${API_BASE_URL}/transactions`, {
@@ -968,24 +1022,27 @@ export const dataService = {
           body: JSON.stringify(tx),
         });
         const json = await res.json();
-        return json.id;
+        createdId = json.id || createdId;
       } catch (e) {
         console.warn('Fallback createTransaction', e);
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
         const { data } = await supabase.from('transactions').insert(tx).select().single();
-        return data?.id;
+        if (data?.id) createdId = data.id;
       } catch (e) {
         console.warn('Lỗi Supabase createTransaction', e);
       }
     }
 
+    // Gửi webhook Google Sheets
+    syncTransactionToSheet({ ...tx, id: createdId });
+
     const txs = await dataService.getTransactions({});
-    const newTx = { ...tx, id: Date.now(), created_at: new Date().toISOString() };
+    const newTx = { ...tx, id: createdId, created_at: new Date().toISOString() };
     txs.unshift(newTx);
     safeStorage.setItem('app_transactions', JSON.stringify(txs));
-    return newTx.id;
+    return createdId;
   },
 
   updateTransaction: async (id, tx) => {
@@ -1038,3 +1095,13 @@ export const dataService = {
     return true;
   },
 };
+
+export const googleSheetService = {
+  getWebhookUrl: getGoogleSheetsWebhookUrl,
+  sendWebhook: sendGoogleSheetsWebhook,
+  testConnection: testGoogleSheetsConnection,
+  syncTransaction: syncTransactionToSheet,
+  syncContribution: syncContributionToSheet,
+  syncAllData: syncAllDataToSheet,
+};
+
