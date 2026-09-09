@@ -623,24 +623,102 @@ export const dataService = {
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
+        // 1. Lấy thông tin bản ghi tuần này
+        const { data: weekRecord } = await supabase
+          .from('fund_contributions')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        const newPaidStatus = isPaid ? 1 : 0;
+        const paidAt = isPaid ? new Date().toISOString() : null;
+
         await supabase
           .from('fund_contributions')
           .update({
-            is_paid: isPaid ? 1 : 0,
-            paid_at: isPaid ? new Date().toISOString() : null,
+            is_paid: newPaidStatus,
+            paid_at: paidAt,
             ...(note ? { note } : {}),
           })
           .eq('id', id);
+
+        // 2. Tự động đồng bộ sang bảng transactions
+        if (weekRecord) {
+          const memberId = weekRecord.member_id;
+          const month = weekRecord.month;
+          const year = weekRecord.year;
+          const week = weekRecord.week;
+          const amount = Number(weekRecord.amount) || 10000;
+
+          const { data: member } = await supabase.from('members').select('name').eq('id', memberId).single();
+          const memberName = member?.name || 'Thành viên';
+          const defaultDesc = `${memberName} nộp quỹ Tuần ${week} Tháng ${month}/${year}`;
+
+          if (isPaid) {
+            await supabase.from('transactions').insert({
+              type: 'income',
+              amount: amount,
+              category: 'Thu quỹ định kỳ',
+              member_id: memberId,
+              member_name: memberName,
+              description: note || defaultDesc,
+              transaction_date: new Date().toISOString().slice(0, 10),
+            });
+          } else {
+            // Hủy nộp: Xóa giao dịch thu của tuần này
+            const { data: existingTxs } = await supabase
+              .from('transactions')
+              .select('id, description')
+              .eq('member_id', memberId)
+              .eq('type', 'income')
+              .order('id', { ascending: false });
+
+            const targetTx = (existingTxs || []).find((t) =>
+              t.description && (
+                t.description.includes(`Tuần ${week}`) ||
+                t.description.includes(`Tuan ${week}`) ||
+                t.description.includes(`T${week}`) ||
+                t.description.includes(`T${month}/${year}`)
+              )
+            );
+
+            if (targetTx) {
+              await supabase.from('transactions').delete().eq('id', targetTx.id);
+            }
+          }
+        }
+
         return true;
       } catch (e) {
         console.warn('Lỗi Supabase toggleWeekContribution', e);
       }
     }
+
+    // Local Storage Fallback
+    try {
+      const localStr = safeStorage.getItem('app_transactions');
+      let txs = localStr ? JSON.parse(localStr) : [];
+      if (isPaid) {
+        txs.unshift({
+          id: Date.now(),
+          type: 'income',
+          amount: 10000,
+          category: 'Thu quỹ định kỳ',
+          description: note || `Nộp quỹ tuần`,
+          transaction_date: new Date().toISOString().slice(0, 10),
+        });
+      }
+      safeStorage.setItem('app_transactions', JSON.stringify(txs));
+    } catch (e) {}
+
     return true;
   },
 
   toggleMonthContribution: async (memberId, month, year, isPaid, note = null) => {
     const fullNote = isPaid ? (note || `Đóng cả tháng ${month}/${year}`) : null;
+    const settings = await dataService.getSettings();
+    const weeklyAmount = Number(settings.weekly_amount) || 10000;
+    const monthlyAmount = Number(settings.monthly_amount) || weeklyAmount * 4;
 
     if (STORAGE_MODE === 'local_api') {
       try {
@@ -655,6 +733,15 @@ export const dataService = {
       }
     } else if (STORAGE_MODE === 'supabase' && supabase) {
       try {
+        const { data: weeks } = await supabase
+          .from('fund_contributions')
+          .select('*')
+          .eq('member_id', memberId)
+          .eq('month', month)
+          .eq('year', year);
+
+        const currentlyPaidCount = (weeks || []).filter((w) => w.is_paid === 1).length;
+
         await supabase
           .from('fund_contributions')
           .update({
@@ -665,6 +752,45 @@ export const dataService = {
           .eq('member_id', memberId)
           .eq('month', month)
           .eq('year', year);
+
+        const { data: member } = await supabase.from('members').select('name').eq('id', memberId).single();
+        const memberName = member?.name || 'Thành viên';
+
+        if (isPaid) {
+          const unpaidCount = 4 - currentlyPaidCount;
+          const amountToRecord = unpaidCount > 0 ? unpaidCount * weeklyAmount : monthlyAmount;
+          if (amountToRecord > 0) {
+            await supabase.from('transactions').insert({
+              type: 'income',
+              amount: amountToRecord,
+              category: 'Thu quỹ định kỳ',
+              member_id: memberId,
+              member_name: memberName,
+              description: fullNote || `${memberName} nộp quỹ cả tháng ${month}/${year}`,
+              transaction_date: new Date().toISOString().slice(0, 10),
+            });
+          }
+        } else {
+          // Hủy nộp cả tháng: Xóa các giao dịch nộp quỹ tháng này của thành viên
+          const { data: existingTxs } = await supabase
+            .from('transactions')
+            .select('id, description')
+            .eq('member_id', memberId)
+            .eq('type', 'income');
+
+          const toDelete = (existingTxs || []).filter((t) =>
+            t.description && (
+              t.description.includes(`T${month}/${year}`) ||
+              t.description.includes(`tháng ${month}`) ||
+              t.description.includes(`Tháng ${month}`)
+            )
+          );
+
+          if (toDelete.length > 0) {
+            await supabase.from('transactions').delete().in('id', toDelete.map((t) => t.id));
+          }
+        }
+
         return true;
       } catch (e) {
         console.warn('Lỗi Supabase toggleMonthContribution', e);
